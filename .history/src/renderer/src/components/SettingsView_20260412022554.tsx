@@ -9,8 +9,6 @@ export default function SettingsView(): React.JSX.Element {
   const [jvmArgs, setJvmArgs] = useState('')
   const [closeOnLaunch, setCloseOnLaunch] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [cacheCleared, setCacheCleared] = useState(false)
-  const [clearingCache, setClearingCache] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -45,23 +43,6 @@ export default function SettingsView(): React.JSX.Element {
     window.api.accountSyncSettings({ gameDir, maxMemory, minMemory, javaPath, closeOnLaunch }).catch(() => {})
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }
-
-  const handleClearCache = async (type: 'versions' | 'libraries' | 'all') => {
-    setClearingCache(true)
-    try {
-      const res = await window.api.clearCache(type)
-      if (res.success) {
-        setCacheCleared(true)
-        setTimeout(() => setCacheCleared(false), 3000)
-      } else {
-        alert(`キャッシュクリア失敗: ${res.error}`)
-      }
-    } catch {
-      alert('キャッシュクリア中にエラーが発生しました')
-    } finally {
-      setClearingCache(false)
-    }
   }
 
   const handleReset = () => {
@@ -180,34 +161,6 @@ export default function SettingsView(): React.JSX.Element {
             </div>
             <span className="text-sm text-gray-300">Minecraft起動後にランチャーを閉じる</span>
           </label>
-        </div>
-
-        <div className="rounded-xl bg-[#1a1a2e] border border-red-500/20 p-5">
-          <h3 className="mb-4 text-sm font-semibold text-red-400 flex items-center gap-2">
-            <AlertTriangle size={16} />
-            キャッシュ管理
-          </h3>
-          <p className="text-xs text-gray-500 mb-4">
-            起動に問題がある場合（ClassNotFoundExceptionなど）、キャッシュをクリアして再ダウンロードできます。
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => handleClearCache('versions')}
-              disabled={clearingCache}
-              className="flex items-center gap-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 px-3 py-2 text-sm text-red-400 transition-colors"
-            >
-              <Trash2 size={14} />
-              {clearingCache ? '削除中...' : cacheCleared ? '削除済み！' : 'バージョンキャッシュをクリア'}
-            </button>
-            <button
-              onClick={() => handleClearCache('all')}
-              disabled={clearingCache}
-              className="flex items-center gap-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 disabled:opacity-50 px-3 py-2 text-sm text-red-400 transition-colors"
-            >
-              <Trash2 size={14} />
-              すべてクリア
-            </button>
-          </div>
         </div>
 
         <div className="flex justify-between gap-3">

@@ -758,17 +758,11 @@ interface FabricLibrary {
   url?: string
 }
 
-// ── JARダウンロード ──────────────────────────────────────────────────────────
-const MIN_JAR_SIZE = 50000 // 50KB minimum for a valid loader jar
-
-const downloadJar = async (url: string, destPath: string, minSize = MIN_JAR_SIZE): Promise<boolean> => {
+const downloadJar = async (url: string, destPath: string): Promise<boolean> => {
   try {
     fs.mkdirSync(path.dirname(destPath), { recursive: true })
     const res = await axios.get(url, { responseType: 'arraybuffer', timeout: 60000 })
-    const data = Buffer.from(res.data)
-    // Check PK magic bytes and minimum size
-    if (data.length < minSize || data[0] !== 0x50 || data[1] !== 0x4B) return false
-    fs.writeFileSync(destPath, data)
+    fs.writeFileSync(destPath, Buffer.from(res.data))
     return true
   } catch {
     return false
@@ -979,20 +973,13 @@ const installFabricLoader = async (
     }
 
     // Download the loader jar from Fabric Maven
-    const loaderUrl = `https://maven.fabricmc.net/net/fabricmc/fabric-loader/${loaderVersion}/fabric-loader-${loaderVersion}.jar`
-    if (fs.existsSync(versionJarPath)) {
-      const existing = fs.readFileSync(versionJarPath)
-      // Fabric loader jar should be at least 500KB (typical size is 1.5-2MB)
-      if (existing.length < MIN_JAR_SIZE || existing[0] !== 0x50 || existing[1] !== 0x4B) {
-        onProgress?.(`[Fabric] Removing corrupt loader jar (${existing.length} bytes), re-downloading...`)
-        fs.unlinkSync(versionJarPath)
-      }
-    }
     if (!fs.existsSync(versionJarPath)) {
       onProgress?.(`[Fabric] Downloading loader jar...`)
+      const loaderUrl = `https://maven.fabricmc.net/net/fabricmc/fabric-loader/${loaderVersion}/fabric-loader-${loaderVersion}.jar`
       const success = await downloadJar(loaderUrl, versionJarPath)
       if (!success) {
-        onProgress?.(`[Fabric] Failed to download loader jar from version dir, will rely on libraries/`)
+        onProgress?.(`[Fabric] Failed to download loader jar`)
+        // Continue anyway, might be in libraries
       }
     }
 
@@ -1308,6 +1295,12 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
 
       // 3. Add libraries from profile + inherited/base Minecraft versions
       // Skip the loader jar as it's already added as versionJar
+      const loaderArtifact = options.modLoader === 'fabric'
+        ? `net.fabricmc:fabric-loader:${resolvedLoaderVersion}`
+        : options.modLoader === 'quilt'
+        ? `org.quiltmc:quilt-loader:${resolvedLoaderVersion}`
+        : null
+
       let allLibraries: MojangLibrary[] =
         collectVersionLibrariesRecursive(options.gameDir, versionId)
       event.sender.send('launch-log', `[Launcher] Libraries merged (inherits 포함): ${allLibraries.length}`)
@@ -1319,13 +1312,15 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
       }
       allLibraries = Array.from(byName.values())
 
-      // Use a Set to avoid duplicate classpath entries
-      const classpathSet = new Set<string>(classpath)
-
       let libCount = 0
       let missingLibs: string[] = []
       for (const lib of allLibraries) {
         if (lib.name) {
+          // Skip loader jar to avoid duplicate
+          if (loaderArtifact && lib.name === loaderArtifact) {
+            event.sender.send('launch-log', `[Launcher] Skipping duplicate loader: ${lib.name}`)
+            continue
+          }
 
           const artifactPath = lib.downloads?.artifact?.path
           const fallbackMavenPath = parseMavenPath(lib.name).path
@@ -1346,11 +1341,8 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           }
 
           if (fs.existsSync(libPath)) {
-            if (!classpathSet.has(libPath)) {
-              classpath.push(libPath)
-              classpathSet.add(libPath)
-              libCount++
-            }
+            classpath.push(libPath)
+            libCount++
           } else {
             missingLibs.push(lib.name)
           }
@@ -2153,54 +2145,6 @@ ipcMain.handle('dev-update-news', async (_e, news: unknown) => {
       timeout: 10000
     })
     return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
-// ── キャッシュクリア ─────────────────────────────────────────────────────────
-ipcMain.handle('clear-cache', async (_e, type: 'versions' | 'libraries' | 'all') => {
-  try {
-    const gameDir = store.get('settings.gameDir') as string
-    if (!gameDir) return { success: false, error: 'ゲームディレクトリが設定されていません' }
-
-    let cleared: string[] = []
-
-    if (type === 'versions' || type === 'all') {
-      const versionsDir = path.join(gameDir, 'versions')
-      if (fs.existsSync(versionsDir)) {
-        const entries = fs.readdirSync(versionsDir)
-        for (const entry of entries) {
-          const entryPath = path.join(versionsDir, entry)
-          const stat = fs.statSync(entryPath)
-          if (stat.isDirectory() && entry.includes('fabric')) {
-            // Remove the entire fabric loader version directory
-            fs.rmSync(entryPath, { recursive: true, force: true })
-            cleared.push(`versions/${entry}`)
-          }
-        }
-      }
-    }
-
-    if (type === 'libraries' || type === 'all') {
-      const libDir = path.join(gameDir, 'libraries')
-      if (fs.existsSync(libDir)) {
-        // Remove Fabric-related libraries
-        const fabricPaths = [
-          path.join(libDir, 'net/fabricmc'),
-          path.join(libDir, 'net/ornithemc'),
-          path.join(libDir, 'net/minecraft/fabric-loader')
-        ]
-        for (const fp of fabricPaths) {
-          if (fs.existsSync(fp)) {
-            fs.rmSync(fp, { recursive: true, force: true })
-            cleared.push(fp.replace(gameDir + path.sep, ''))
-          }
-        }
-      }
-    }
-
-    return { success: true, cleared }
   } catch (err: unknown) {
     return { success: false, error: (err as Error).message }
   }
