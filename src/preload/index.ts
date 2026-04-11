@@ -38,6 +38,7 @@ const api = {
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),
 
   fetchModpackList: () => ipcRenderer.invoke('fetch-modpack-list'),
+  fetchModpackLaunchInfo: (id: string) => ipcRenderer.invoke('fetch-modpack-launch-info', id),
   checkModpackUpdateById: (id: string) => ipcRenderer.invoke('check-modpack-update-by-id', id),
   updateModpackById: (id: string, dir: string) => ipcRenderer.invoke('update-modpack-by-id', id, dir),
 
@@ -51,8 +52,14 @@ const api = {
   devGetFiles: (modpackId: string) => ipcRenderer.invoke('dev-get-files', modpackId),
   devUploadFile: (modpackId: string, localPath: string, serverPath: string) =>
     ipcRenderer.invoke('dev-upload-file', modpackId, localPath, serverPath),
+  devUploadDirectory: (modpackId: string, localDir: string, serverBasePath: string) =>
+    ipcRenderer.invoke('dev-upload-directory', modpackId, localDir, serverBasePath),
   devDeleteFile: (modpackId: string, serverPath: string) =>
     ipcRenderer.invoke('dev-delete-file', modpackId, serverPath),
+  devGetModpackDownloadTargets: (modpackId: string) =>
+    ipcRenderer.invoke('dev-get-modpack-download-targets', modpackId),
+  devSaveModpackDownloadTargets: (modpackId: string, paths: string[]) =>
+    ipcRenderer.invoke('dev-save-modpack-download-targets', modpackId, paths),
   devGetNews: () => ipcRenderer.invoke('dev-get-news'),
   devUpdateNews: (news: unknown) => ipcRenderer.invoke('dev-update-news', news),
 

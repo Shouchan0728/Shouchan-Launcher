@@ -1,0 +1,130 @@
+{
+  "Version": 1,
+  "WorkspaceRootPath": "F:\\Programming\\ShouchanLauncher\\",
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|F:\\Programming\\ShouchanLauncher\\TODO.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:TODO.md||{EFC0BB08-EA7D-40C6-A696-C870411A895B}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|F:\\Programming\\ShouchanLauncher\\src\\main\\index.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\main\\index.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\types\\index.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\renderer\\src\\types\\index.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|F:\\Programming\\ShouchanLauncher\\src\\preload\\index.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\preload\\index.ts||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\components\\HomeView.tsx||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\renderer\\src\\components\\HomeView.tsx||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\components\\DeveloperMenu.tsx||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\renderer\\src\\components\\DeveloperMenu.tsx||{0F2454B1-A556-402D-A7D0-1FDE7F99DEE0}"
+    }
+  ],
+  "DocumentGroupContainers": [
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 3,
+          "Children": [
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{aa2115a1-9712-457b-9047-dbb71ca2cdd2}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "TODO.md",
+              "DocumentMoniker": "F:\\Programming\\ShouchanLauncher\\TODO.md",
+              "RelativeDocumentMoniker": "TODO.md",
+              "ToolTip": "F:\\Programming\\ShouchanLauncher\\TODO.md",
+              "RelativeToolTip": "TODO.md",
+              "ViewState": "AgIAAKkBAAAAAAAAAAAAAMgBAAA8AAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001818|",
+              "WhenOpened": "2026-04-11T01:31:06.106Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "DeveloperMenu.tsx",
+              "DocumentMoniker": "F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\components\\DeveloperMenu.tsx",
+              "RelativeDocumentMoniker": "src\\renderer\\src\\components\\DeveloperMenu.tsx",
+              "ToolTip": "F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\components\\DeveloperMenu.tsx",
+              "RelativeToolTip": "src\\renderer\\src\\components\\DeveloperMenu.tsx",
+              "ViewState": "AgIAAIsCAAAAAAAAAABFwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-11T01:30:09.001Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "HomeView.tsx",
+              "DocumentMoniker": "F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\components\\HomeView.tsx",
+              "RelativeDocumentMoniker": "src\\renderer\\src\\components\\HomeView.tsx",
+              "ToolTip": "F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\components\\HomeView.tsx",
+              "RelativeToolTip": "src\\renderer\\src\\components\\HomeView.tsx",
+              "ViewState": "AgIAACUAAAAAAAAAAABFwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-11T01:30:05.435Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "index.ts",
+              "DocumentMoniker": "F:\\Programming\\ShouchanLauncher\\src\\preload\\index.ts",
+              "RelativeDocumentMoniker": "src\\preload\\index.ts",
+              "ToolTip": "F:\\Programming\\ShouchanLauncher\\src\\preload\\index.ts",
+              "RelativeToolTip": "src\\preload\\index.ts",
+              "ViewState": "AgIAACcAAAAAAAAAAABFwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-11T01:28:43.844Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "index.ts",
+              "DocumentMoniker": "F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\types\\index.ts",
+              "RelativeDocumentMoniker": "src\\renderer\\src\\types\\index.ts",
+              "ToolTip": "F:\\Programming\\ShouchanLauncher\\src\\renderer\\src\\types\\index.ts",
+              "RelativeToolTip": "src\\renderer\\src\\types\\index.ts",
+              "ViewState": "AgIAAEAAAAAAAAAAAABFwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-11T01:28:33.472Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "index.ts",
+              "DocumentMoniker": "F:\\Programming\\ShouchanLauncher\\src\\main\\index.ts",
+              "RelativeDocumentMoniker": "src\\main\\index.ts",
+              "ToolTip": "F:\\Programming\\ShouchanLauncher\\src\\main\\index.ts",
+              "RelativeToolTip": "src\\main\\index.ts",
+              "ViewState": "AgIAAA0DAAAAAAAAAABFwAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2026-04-11T01:14:17.251Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -31,6 +31,7 @@
   - **ニュース**：記事の追加・編集・削除
 - [x] Java自動インストール（Adoptium JRE 17）
 - [x] 設定変更時にサーバーへ自動同期
+- [x] Minecraft assets（背景・言語・フォント）不足時の自動取得と assetIndex 自動解決
 
 ---
 
@@ -398,6 +399,123 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo certbot --nginx -d srgk.ddns.net
 sudo systemctl enable --now certbot-renew.timer
 ```
+
+---
+
+## 🆕 今回追加した機能に合わせてサーバーで確認すること（簡単チェック）
+
+以下はランチャーの「ModPackごとの配布対象ファイル選択」機能を使うための確認項目です。
+
+- [ ] `server.js` が **TODO.md 手順4の最新版** になっている（`/admin/modpacks/:id/manifest` があること）
+- [ ] API再起動
+
+```bash
+sudo systemctl restart shouchan-api
+sudo systemctl status shouchan-api
+```
+
+- [ ] nginx再読込
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+- [ ] 動作確認（HTTP 200 が返るか）
+
+```bash
+curl -I https://srgk.ddns.net/status
+curl -I https://srgk.ddns.net/modpack/list
+```
+
+- [ ] 開発者メニュー手順
+  1. ModPack管理でModPackを作成
+  2. ファイル管理で対象ModPackを選択
+  3. 配布したいファイルにチェックを入れる
+  4. 「配布対象を保存」を押す
+  5. プレイヤー側ホームでそのModPackを選んで「更新」
+
+---
+
+## 🆕 追加修正（今回）
+
+- [x] ファイル管理でフォルダー削除対応（配下ファイルをまとめて削除）
+- [x] ホームの更新保存先を固定化（設定のゲームディレクトリ配下）
+  - 保存先: `設定.gameDir/instances/[ModPack名]/`
+- [x] 起動時も同じ `instances/[ModPack名]` を使用
+- [x] FabricのloaderVersion未指定時、公式メタデータから自動取得して起動
+- [x] Forge/NeoForgeのloaderVersion未指定時、公式配布元メタデータから自動解決して起動
+
+### Forge/NeoForge 自動解決の確認
+
+- [ ] ModPackで `modLoader=forge` または `modLoader=neoforge` にして `loaderVersion` を空にする
+- [ ] ホームで起動し、ログに `Forgeバージョン自動解決` / `NeoForgeバージョン自動解決` が出ることを確認
+
+### 起動中クラッシュ修正（ImmediatelyFast / Gson不足）
+
+- [x] ランチャー側で `gson-2.11.0` を自動ダウンロード対象に追加
+- [x] 起動クラスパスに `gson-2.11.0.jar` を明示追加
+
+#### あなたがやること
+
+- [ ] 一度だけ対象インスタンスの `libraries/com/google/code/gson` を削除（壊れたJarがある場合のため）
+- [ ] ランチャーで再起動（自動でgson再取得される）
+- [ ] ログに `Added Gson: gson-2.11.0.jar` が出ることを確認
+
+### 起動中クラッシュ修正（Minecraft本体ライブラリ不足）
+
+- [x] Fabric/Quilt起動時に、Loader profile だけでなく `versions/[MC]/[MC].json` のライブラリも統合
+- [x] 不足ライブラリは起動前に自動ダウンロード
+- [x] `downloadMinecraftClient` で `versions/[MC]/[MC].json` を必ず保存（統合元ファイルを保証）
+- [x] 公式ランチャー準拠: `versions/[MC].json` の libraries/artifact/classifiers を全取得する処理を追加
+- [x] 起動クラスパス側も `inheritsFrom` を再帰解決し、`downloads.artifact.path` 優先でlibrariesを全使用するよう修正
+
+#### あなたがやること
+
+- [ ] 対象インスタンスで再起動
+- [ ] ログに `Base version libraries merged:` が出ることを確認
+- [ ] ログに `公式ランチャー準拠librariesの確認完了` が出ることを確認
+- [ ] ログに `Libraries merged (inherits 포함):` が出ることを確認（使用対象ライブラリ数）
+- [ ] まだ落ちる場合は、最新ログ末尾20行を共有
+
+### 起動中クラッシュ修正（Mojang Logging不足）
+
+- [x] `com.mojang:logging:1.5.10` を自動取得対象に追加
+- [x] 起動クラスパスに `logging-1.5.10.jar` を明示追加
+
+#### あなたがやること
+
+- [ ] 対象インスタンスの `libraries/com/mojang/logging` を一度削除
+- [ ] 再起動してログに `Added Mojang Logging: logging-1.5.10.jar` が出るか確認
+
+### サーバー接続できない問題（401対策）
+
+- [x] 起動直前にMicrosoftトークンを自動更新するよう修正
+- [x] 更新失敗時は起動前に再ログインを促すエラーを表示
+- [x] オフライン認証時はログに「online-modeサーバーへ接続不可」を表示
+- [x] 起動引数の `--userType` を Microsoft用に `msa` へ修正（offlineはlegacy）
+- [x] `--xuid` / `--clientId` / `--userProperties` を付与
+
+#### あなたがやること
+
+- [ ] 一度ログアウト→Microsoftで再ログイン
+- [ ] 起動ログで `Microsoftトークン更新完了` を確認
+- [ ] まだ接続不可ならサーバーの `online-mode` とBAN/ホワイトリスト設定を確認
+- [x] **QuiltのloaderVersion未指定時、Fabric同様に自動解決を追加**
+- [x] **Forge/NeoForgeのバージョン形式を修正** - `minecraft-launcher-core` では `${mcVersion}-${loaderVersion}` 形式が必要
+- [x] **Fabric/Quilt Loader自動インストール機能を追加** - MCLCは自動ダウンロードしないため、version JSONを手動でダウンロード・配置
+- [x] **起動中の重複クリック防止** - `launching`状態のチェックを追加
+- [x] **未更新ModPackの起動ブロック** - ファイル検証機能を追加し、更新されていないModPackは「先に更新してください」エラーでブロック
+- [x] **Fabric Loaderの完全自動インストール** - version JSON + 必要な全ライブラリをMavenリポジトリから手動ダウンロード
+- [x] **Quilt Loaderの完全自動インストール** - Fabric同様にライブラリ自動ダウンロード対応
+
+### あなたがやること（簡単）
+
+- [ ] 設定タブでゲームディレクトリを1回だけ設定して保存
+- [ ] 開発者メニューでフォルダー削除が動くか確認
+- [ ] Fabric ModPackで、loaderVersion空でも起動時にFabric入りで立ち上がるか確認
+- [ ] **Forge ModPackで、loaderVersion空でも起動時にForge入りで立ち上がるか確認**
+- [ ] **Quilt ModPackで、loaderVersion空でも起動時にQuilt入りで立ち上がるか確認**
+
 
 ---
 
