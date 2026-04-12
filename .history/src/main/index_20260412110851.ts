@@ -1326,9 +1326,8 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
       let missingLibs: string[] = []
       for (const lib of allLibraries) {
         if (lib.name) {
-          // Skip fabric-loader and quilt-loader as they're already added as versionJar
-          if (lib.name.startsWith('net.fabricmc:fabric-loader:') ||
-              lib.name.startsWith('org.quiltmc:quilt-loader:')) {
+          // Skip fabric-loader as it's already added as versionJar
+          if (lib.name.startsWith('net.fabricmc:fabric-loader:')) {
             event.sender.send('launch-log', `[Launcher] Skipping duplicate loader lib: ${lib.name}`)
             continue
           }
