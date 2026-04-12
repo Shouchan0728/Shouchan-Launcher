@@ -422,9 +422,6 @@ function createWindow(): void {
     else mainWindow.maximize()
   })
   ipcMain.on('window-close', () => mainWindow.close())
-
-  // アップデート機能を初期化
-  setupAutoUpdater(mainWindow)
 }
 
 app.whenReady().then(() => {

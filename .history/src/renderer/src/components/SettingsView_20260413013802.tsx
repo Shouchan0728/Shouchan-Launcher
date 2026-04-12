@@ -11,8 +11,6 @@ export default function SettingsView(): React.JSX.Element {
   const [saved, setSaved] = useState(false)
   const [cacheCleared, setCacheCleared] = useState(false)
   const [clearingCache, setClearingCache] = useState(false)
-  const [checkingUpdate, setCheckingUpdate] = useState(false)
-  const [updateResult, setUpdateResult] = useState<{ success?: boolean; message?: string } | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -71,24 +69,6 @@ export default function SettingsView(): React.JSX.Element {
     setMinMemory('2G')
     setJavaPath('')
     setJvmArgs('')
-  }
-
-  const handleCheckUpdate = async () => {
-    setCheckingUpdate(true)
-    setUpdateResult(null)
-    try {
-      const res = await window.api.checkForUpdates()
-      if (res.success) {
-        setUpdateResult({ success: true, message: 'アップデートを確認しました' })
-      } else {
-        setUpdateResult({ success: false, message: res.error || '確認に失敗しました' })
-      }
-    } catch {
-      setUpdateResult({ success: false, message: '確認中にエラーが発生しました' })
-    } finally {
-      setCheckingUpdate(false)
-      setTimeout(() => setUpdateResult(null), 5000)
-    }
   }
 
   return (
@@ -227,31 +207,6 @@ export default function SettingsView(): React.JSX.Element {
               <Trash2 size={14} />
               すべてクリア
             </button>
-          </div>
-        </div>
-
-        <div className="rounded-xl bg-[#1a1a2e] border border-blue-500/20 p-5">
-          <h3 className="mb-4 text-sm font-semibold text-blue-400 flex items-center gap-2">
-            <Download size={16} />
-            アップデート
-          </h3>
-          <p className="text-xs text-gray-500 mb-4">
-            新しいバージョンがリリースされているか確認します。アップデートがあれば自動的にダウンロードされます。
-          </p>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={handleCheckUpdate}
-              disabled={checkingUpdate}
-              className="flex items-center gap-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 disabled:opacity-50 px-3 py-2 text-sm text-blue-400 transition-colors w-fit"
-            >
-              <Download size={14} />
-              {checkingUpdate ? '確認中...' : 'アップデートを確認'}
-            </button>
-            {updateResult && (
-              <div className={`text-xs ${updateResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                {updateResult.message}
-              </div>
-            )}
           </div>
         </div>
 

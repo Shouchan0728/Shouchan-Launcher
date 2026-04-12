@@ -230,31 +230,6 @@ export default function SettingsView(): React.JSX.Element {
           </div>
         </div>
 
-        <div className="rounded-xl bg-[#1a1a2e] border border-blue-500/20 p-5">
-          <h3 className="mb-4 text-sm font-semibold text-blue-400 flex items-center gap-2">
-            <Download size={16} />
-            アップデート
-          </h3>
-          <p className="text-xs text-gray-500 mb-4">
-            新しいバージョンがリリースされているか確認します。アップデートがあれば自動的にダウンロードされます。
-          </p>
-          <div className="flex flex-col gap-3">
-            <button
-              onClick={handleCheckUpdate}
-              disabled={checkingUpdate}
-              className="flex items-center gap-2 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 disabled:opacity-50 px-3 py-2 text-sm text-blue-400 transition-colors w-fit"
-            >
-              <Download size={14} />
-              {checkingUpdate ? '確認中...' : 'アップデートを確認'}
-            </button>
-            {updateResult && (
-              <div className={`text-xs ${updateResult.success ? 'text-green-400' : 'text-red-400'}`}>
-                {updateResult.message}
-              </div>
-            )}
-          </div>
-        </div>
-
         <div className="flex justify-between gap-3">
           <button
             onClick={handleReset}

@@ -199,14 +199,6 @@ export default function App(): React.JSX.Element {
   return (
     <div className="flex h-screen w-screen flex-col bg-[#111117] text-white overflow-hidden">
       <TitleBar appVersion={appVersion} launcherAccount={launcherAccount} mcUsername={mcUsername} />
-      {showUpdateNotifier && (
-        <UpdateNotifier
-          updateState={updateState}
-          onCheckForUpdates={handleCheckForUpdates}
-          onInstallUpdate={handleInstallUpdate}
-          onDismiss={handleDismissUpdate}
-        />
-      )}
       <div className="flex flex-1 overflow-hidden">
         <Sidebar currentView={view} onViewChange={setView} role={launcherAccount?.role ?? 'player'} />
         <main className="flex-1 overflow-hidden">

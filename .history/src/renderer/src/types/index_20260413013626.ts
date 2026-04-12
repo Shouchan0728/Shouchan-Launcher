@@ -149,11 +149,6 @@ declare global {
 
       clearCache: (type: 'versions' | 'libraries' | 'all') => Promise<{ success: boolean; cleared?: string[]; error?: string }>
 
-      // アップデート機能
-      checkForUpdates: () => Promise<{ success: boolean; error?: string }>
-      installUpdate: () => Promise<{ success: boolean; error?: string }>
-      onUpdateStatus: (cb: (state: UpdateState) => void) => () => void
-
       onModpackProgress: (cb: (data: { completed: number; total: number; file: string }) => void) => () => void
       onLaunchProgress: (cb: (data: unknown) => void) => () => void
       onLaunchLog: (cb: (log: string) => void) => () => void
