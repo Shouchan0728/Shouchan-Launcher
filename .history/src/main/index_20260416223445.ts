@@ -1761,80 +1761,36 @@ ipcMain.handle('select-file', async (_e, filters?: Electron.FileFilter[]) => {
 ipcMain.handle('get-app-version', () => app.getVersion())
 
 // ── Shouchan アカウント API ────────────────────────────────────────────────
-const formatAccountApiError = (err: unknown, fallback: string): string => {
-  if (axios.isAxiosError(err)) {
-    if (err.response) {
-      const status = err.response.status
-      const data = err.response.data as { error?: string; message?: string }
-      return data?.error || data?.message || `サーバーエラー (${status})`
-    }
-    if (err.request) return 'サーバーに接続できませんでした'
-    return err.message
-  }
-  if (err instanceof Error) return err.message
-  return fallback
-}
-
-ipcMain.handle('account-register-start', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
+ipcMain.handle('account-register', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
   try {
-    const normalizedEmail = email.trim().toLowerCase()
-    const res = await axios.post(`${MODPACK_SERVER_URL}/account/register/start`, {
-      username,
-      email: normalizedEmail,
-      password
-    }, { timeout: 10000 })
-    if (normalizedEmail) store.set('auth.pendingRegisterEmail', normalizedEmail)
-    return { success: true, pendingToken: res.data.pendingToken as string }
-  } catch (err: unknown) {
-    return { success: false, error: formatAccountApiError(err, '認証コード送信に失敗しました') }
-  }
-})
-
-ipcMain.handle('account-register-verify', async (_e, { pendingToken, code }: { pendingToken: string; code: string }) => {
-  try {
-    const res = await axios.post(`${MODPACK_SERVER_URL}/account/register/verify`, { pendingToken, code }, { timeout: 10000 })
-    const fallbackEmail = (store.get('auth.pendingRegisterEmail') as string) || ''
-    const account = {
-      id: res.data.id,
-      username: res.data.username,
-      email: (res.data.email as string) || fallbackEmail,
-      role: (res.data.role as 'developer' | 'player') || 'player',
-      createdAt: (res.data.createdAt as string) || new Date().toISOString(),
-      token: res.data.token
-    }
+    const res = await axios.post(`${MODPACK_SERVER_URL}/account/register`, { username, email, password }, { timeout: 10000 })
+    const account = { id: res.data.id, username, email, role: res.data.role || 'player', createdAt: res.data.createdAt || new Date().toISOString(), token: res.data.token }
     store.set('launcherAccount', account)
-    store.delete('auth.pendingRegisterEmail')
     return { success: true, account }
   } catch (err: unknown) {
-    return { success: false, error: formatAccountApiError(err, '認証コードの確認に失敗しました') }
-  }
-})
-
-ipcMain.handle('account-login-start', async (_e, { email, password }: { email: string; password: string }) => {
-  try {
-    const normalizedEmail = email.trim().toLowerCase()
-    const res = await axios.post(`${MODPACK_SERVER_URL}/account/login/start`, { email: normalizedEmail, password }, { timeout: 10000 })
-    if (normalizedEmail) store.set('auth.pendingLoginEmail', normalizedEmail)
-    return { success: true, pendingToken: res.data.pendingToken as string }
-  } catch (err: unknown) {
-    return { success: false, error: formatAccountApiError(err, '認証コード送信に失敗しました') }
-  }
-})
-
-ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pendingToken: string; code: string }) => {
-  try {
-    const res = await axios.post(`${MODPACK_SERVER_URL}/account/login/verify`, { pendingToken, code }, { timeout: 10000 })
-    const fallbackEmail = (store.get('auth.pendingLoginEmail') as string) || ''
-    const account = {
-      id: res.data.id,
-      username: res.data.username,
-      email: (res.data.email as string) || fallbackEmail,
-      role: (res.data.role as 'developer' | 'player') || 'player',
-      createdAt: res.data.createdAt,
-      token: res.data.token
+    let msg = '登録に失敗しました'
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        const status = err.response.status
+        const data = err.response.data as { error?: string; message?: string }
+        msg = data?.error || data?.message || `サーバーエラー (${status})`
+      } else if (err.request) {
+        msg = 'サーバーに接続できませんでした'
+      } else {
+        msg = err.message
+      }
+    } else if (err instanceof Error) {
+      msg = err.message
     }
+    return { success: false, error: msg }
+  }
+})
+
+ipcMain.handle('account-login', async (_e, { email, password }: { email: string; password: string }) => {
+  try {
+    const res = await axios.post(`${MODPACK_SERVER_URL}/account/login`, { email, password }, { timeout: 10000 })
+    const account = { id: res.data.id, username: res.data.username, email, role: res.data.role || 'player', createdAt: res.data.createdAt, token: res.data.token }
     store.set('launcherAccount', account)
-    store.delete('auth.pendingLoginEmail')
     if (res.data.settings) {
       const s = res.data.settings
       if (s.gameDir) store.set('settings.gameDir', s.gameDir)
@@ -1845,23 +1801,22 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
     }
     return { success: true, account }
   } catch (err: unknown) {
-    return { success: false, error: formatAccountApiError(err, '認証コードの確認に失敗しました') }
+    let msg = 'ログインに失敗しました'
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        const status = err.response.status
+        const data = err.response.data as { error?: string; message?: string }
+        msg = data?.error || data?.message || `サーバーエラー (${status})`
+      } else if (err.request) {
+        msg = 'サーバーに接続できませんでした'
+      } else {
+        msg = err.message
+      }
+    } else if (err instanceof Error) {
+      msg = err.message
+    }
+    return { success: false, error: msg }
   }
-})
-
-ipcMain.handle('account-register', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
-  void _e
-  void username
-  void email
-  void password
-  return { success: false, error: 'この操作は無効です。メール認証付きの新規登録フローを使用してください。' }
-})
-
-ipcMain.handle('account-login', async (_e, { email, password }: { email: string; password: string }) => {
-  void _e
-  void email
-  void password
-  return { success: false, error: 'この操作は無効です。確認コード付きのログインフローを使用してください。' }
 })
 
 ipcMain.handle('account-sync-settings', async () => {

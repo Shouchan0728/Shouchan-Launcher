@@ -137,6 +137,9 @@ declare global {
       accountRegisterVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountLoginStart: (data: { email: string; password: string }) => Promise<AccountOtpStartResult>
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
+
+      accountRegister: (data: { username: string; email: string; password: string }) => Promise<{ success: boolean; account?: LauncherAccount; error?: string }>
+      accountLogin: (data: { email: string; password: string }) => Promise<{ success: boolean; account?: LauncherAccount; error?: string }>
       accountSyncSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>
       accountVerifyToken: () => Promise<{ success: boolean; role?: 'developer' | 'player'; error?: string }>
 

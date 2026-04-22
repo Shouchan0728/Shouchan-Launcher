@@ -37,6 +37,11 @@ const api = {
     ipcRenderer.invoke('account-login-start', data),
   accountLoginVerify: (data: { pendingToken: string; code: string }) =>
     ipcRenderer.invoke('account-login-verify', data),
+
+  accountRegister: (data: { username: string; email: string; password: string }) =>
+    ipcRenderer.invoke('account-register', data),
+  accountLogin: (data: { email: string; password: string }) =>
+    ipcRenderer.invoke('account-login', data),
   accountSyncSettings: (settings: unknown) =>
     ipcRenderer.invoke('account-sync-settings', settings),
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),

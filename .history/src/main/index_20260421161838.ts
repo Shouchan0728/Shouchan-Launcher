@@ -1850,18 +1850,61 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
 })
 
 ipcMain.handle('account-register', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
-  void _e
-  void username
-  void email
-  void password
-  return { success: false, error: 'この操作は無効です。メール認証付きの新規登録フローを使用してください。' }
+  try {
+    const res = await axios.post(`${MODPACK_SERVER_URL}/account/register`, { username, email, password }, { timeout: 10000 })
+    const account = { id: res.data.id, username, email, role: res.data.role || 'player', createdAt: res.data.createdAt || new Date().toISOString(), token: res.data.token }
+    store.set('launcherAccount', account)
+    return { success: true, account }
+  } catch (err: unknown) {
+    let msg = '登録に失敗しました'
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        const status = err.response.status
+        const data = err.response.data as { error?: string; message?: string }
+        msg = data?.error || data?.message || `サーバーエラー (${status})`
+      } else if (err.request) {
+        msg = 'サーバーに接続できませんでした'
+      } else {
+        msg = err.message
+      }
+    } else if (err instanceof Error) {
+      msg = err.message
+    }
+    return { success: false, error: msg }
+  }
 })
 
 ipcMain.handle('account-login', async (_e, { email, password }: { email: string; password: string }) => {
-  void _e
-  void email
-  void password
-  return { success: false, error: 'この操作は無効です。確認コード付きのログインフローを使用してください。' }
+  try {
+    const res = await axios.post(`${MODPACK_SERVER_URL}/account/login`, { email, password }, { timeout: 10000 })
+    const account = { id: res.data.id, username: res.data.username, email, role: res.data.role || 'player', createdAt: res.data.createdAt, token: res.data.token }
+    store.set('launcherAccount', account)
+    if (res.data.settings) {
+      const s = res.data.settings
+      if (s.gameDir) store.set('settings.gameDir', s.gameDir)
+      if (s.maxMemory) store.set('settings.maxMemory', s.maxMemory)
+      if (s.minMemory) store.set('settings.minMemory', s.minMemory)
+      if (s.javaPath) store.set('settings.javaPath', s.javaPath)
+      if (s.closeOnLaunch !== undefined) store.set('settings.closeOnLaunch', s.closeOnLaunch)
+    }
+    return { success: true, account }
+  } catch (err: unknown) {
+    let msg = 'ログインに失敗しました'
+    if (axios.isAxiosError(err)) {
+      if (err.response) {
+        const status = err.response.status
+        const data = err.response.data as { error?: string; message?: string }
+        msg = data?.error || data?.message || `サーバーエラー (${status})`
+      } else if (err.request) {
+        msg = 'サーバーに接続できませんでした'
+      } else {
+        msg = err.message
+      }
+    } else if (err instanceof Error) {
+      msg = err.message
+    }
+    return { success: false, error: msg }
+  }
 })
 
 ipcMain.handle('account-sync-settings', async () => {
