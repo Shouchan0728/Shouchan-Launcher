@@ -1,6 +1,6 @@
 {
   "name": "shouchan-launcher",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "しょうちゃんが作ったしょうちゃんのためのランチャー",
   "main": "out/main/index.js",
   "author": "Shouchan",
@@ -44,6 +44,7 @@
     "productName": "Shouchan.Launcher",
     "win": {
       "target": "nsis",
+      "artifactName": "Shouchan.Launcher-Setup-${version}.${ext}",
       "icon": "resources/icon.ico"
     },
     "directories": {

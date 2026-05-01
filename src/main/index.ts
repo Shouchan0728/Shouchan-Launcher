@@ -17,7 +17,7 @@ import { spawn } from 'child_process'
 const store = new Store()
 const authManager = new Auth('select_account')
 
-const MODPACK_SERVER_URL = 'https://mc-shouchan.jp'
+const MODPACK_SERVER_URL = 'https://mc-shouchan.jp/api'
 // ↓ 配布前に変更してください。このコードを知っている人だけ開発者になれます。
 const DEVELOPER_CODE = 'SHOUCHAN_DEV_2026_0728'
 // ↓ サーバー側の /admin/* エンドポイント保護トークン（サーバーと合わせること）

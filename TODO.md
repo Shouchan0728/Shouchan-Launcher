@@ -10,6 +10,7 @@
 | ファイアウォール | UFW |
 | APIサーバー場所 | `/srv/http/shouchan-api` |
 | APIポート（内部） | 3000 |
+| データベース | MariaDB（`shouchan` DB / `users`・`otp_sessions` テーブル） |
 
 ---
 
@@ -71,7 +72,7 @@
 
 ### 2) OTPセッション保存を追加する
 
-- [ ] `otp_sessions.json`（またはDBテーブル）を用意
+- [x] MariaDB に `otp_sessions` テーブルを用意（スキーマは手順 1-B 参照）
 - [ ] `pendingToken`, `email`, `purpose(register|login)`, `codeHash`, `expiresAt`, `attempts` を保存
 - [ ] OTP有効期限を 5 分に設定
 - [ ] 検証失敗 5 回で無効化
@@ -134,18 +135,74 @@ if [ ! -f package.json ]; then
   npm init -y
 fi
 
-npm install express cors multer bcrypt jsonwebtoken nodemailer express-rate-limit
+npm install express cors multer bcrypt jsonwebtoken nodemailer express-rate-limit mysql2 dotenv
 ```
+
+### 1-B) MariaDB のインストールとデータベース作成
+
+> アカウント情報は `accounts.json` ではなく **MariaDB** で管理します。Webページ等からも安全に参照できるよう、DB ユーザーは最小権限で運用します。
+
+```bash
+sudo pacman -S mariadb
+sudo mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+sudo systemctl enable --now mariadb
+sudo mariadb-secure-installation
+```
+
+DB とアプリ用ユーザーを作成（`<DBパスワード>` は長いランダム値に置き換え）:
+
+```bash
+sudo mariadb <<'SQL'
+CREATE DATABASE IF NOT EXISTS shouchan
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'shouchan'@'localhost' IDENTIFIED BY '<DBパスワード>';
+GRANT SELECT, INSERT, UPDATE, DELETE ON shouchan.* TO 'shouchan'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+```
+
+テーブル作成:
+
+```bash
+sudo mariadb shouchan <<'SQL'
+CREATE TABLE IF NOT EXISTS users (
+  id             VARCHAR(32)  NOT NULL PRIMARY KEY,
+  username       VARCHAR(64)  NOT NULL,
+  email          VARCHAR(255) NOT NULL UNIQUE,
+  password_hash  VARCHAR(255) NOT NULL,
+  role           VARCHAR(32)  NOT NULL DEFAULT 'player',
+  settings       JSON         NOT NULL,
+  email_verified TINYINT(1)   NOT NULL DEFAULT 0,
+  created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_email (email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS otp_sessions (
+  pending_token VARCHAR(64)  NOT NULL PRIMARY KEY,
+  purpose       ENUM('register','login') NOT NULL,
+  email         VARCHAR(255) NOT NULL,
+  username      VARCHAR(64)  NULL,
+  password_hash VARCHAR(255) NULL,
+  user_id       VARCHAR(32)  NULL,
+  code_hash     CHAR(64)     NOT NULL,
+  attempts      INT          NOT NULL DEFAULT 0,
+  expires_at    BIGINT       NOT NULL,
+  INDEX idx_email_purpose (email, purpose),
+  INDEX idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+SQL
+```
+
+> ⚠️ `accounts.json` / `otp_sessions.json` を使っていた旧環境から移行する場合は、
+> 後述の **「11) 旧 `accounts.json` → MariaDB への一括移行」** を必ず先に実行してください。
 
 ### 2) 必須ファイル作成
 
 ```bash
 cd /srv/http/shouchan-api
 touch server.js
-printf '[]\n' > accounts.json
 printf '[]\n' > modpacks.json
 printf '[{"id":1,"title":"最新情報","content":"Shouchan Launcherへようこそ！","date":"2026-04-10T00:00:00.000Z"}]\n' > news.json
-printf '[]\n' > otp_sessions.json
 ```
 
 - [ ] `server.js` にはこの `TODO.md` の「手順4」のコードをそのまま貼る
@@ -162,6 +219,11 @@ MAIL_PASS=<メールアカウントのパスワード>
 MAIL_FROM=Shouchan Launcher <shouchan@mc-shouchan.jp>
 JWT_SECRET=<ランダムで長い秘密文字列>
 ADMIN_TOKEN=<src/main/index.ts の DEV_ADMIN_TOKEN と同じ値>
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=shouchan
+DB_PASSWORD=<DBパスワード（手順1-B で設定した値）>
+DB_NAME=shouchan
 EOF
 ```
 
@@ -373,15 +435,8 @@ curl -i -X POST https://mc-shouchan.jp/account/login/start \
 ### 9) 開発者権限付与（必要時）
 
 ```bash
-node -e "
-const fs = require('fs');
-const file = '/srv/http/shouchan-api/accounts.json';
-const users = JSON.parse(fs.readFileSync(file));
-const target = '<対象メールアドレス>'.trim().toLowerCase();
-const u = users.find(u => String(u.email || '').trim().toLowerCase() === target);
-if (u) { u.role = 'developer'; fs.writeFileSync(file, JSON.stringify(users, null, 2)); console.log('Done:', u.username); }
-else console.log('User not found');
-"
+sudo mariadb shouchan -e \
+  "UPDATE users SET role='developer' WHERE email=LOWER(TRIM('<対象メールアドレス>'));"
 ```
 
 ### 10) 反映されない時の確認コマンド
@@ -390,8 +445,62 @@ else console.log('User not found');
 sudo systemctl restart shouchan-api
 sudo systemctl status shouchan-api --no-pager
 sudo journalctl -u shouchan-api -n 200 --no-pager
+sudo systemctl status mariadb --no-pager
 sudo nginx -t
 sudo systemctl reload nginx
+```
+
+### 11) 旧 `accounts.json` → MariaDB への一括移行（1回だけ）
+
+旧環境で `accounts.json` を使っていた場合のみ実施。既に MariaDB に同じ `email` / `id` が存在するユーザーはスキップされます（`INSERT IGNORE`）。
+
+```bash
+cd /srv/http/shouchan-api
+cat > migrate-accounts.js << 'EOF'
+require('dotenv').config()
+const fs = require('fs')
+const mysql = require('mysql2/promise')
+
+;(async () => {
+  const file = '/srv/http/shouchan-api/accounts.json'
+  if (!fs.existsSync(file)) { console.log('accounts.json が無いので何もしません'); return }
+  const users = JSON.parse(fs.readFileSync(file, 'utf8'))
+  const db = await mysql.createConnection({
+    host: process.env.DB_HOST, port: Number(process.env.DB_PORT || 3306),
+    user: process.env.DB_USER, password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME
+  })
+  let ok = 0, skip = 0
+  for (const u of users) {
+    const email = String(u.email || '').trim().toLowerCase()
+    if (!u.id || !u.username || !email || !u.passwordHash) { skip++; continue }
+    const [r] = await db.query(
+      `INSERT IGNORE INTO users
+        (id, username, email, password_hash, role, settings, email_verified, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        String(u.id), u.username, email, u.passwordHash,
+        u.role || 'player',
+        JSON.stringify(u.settings || {}),
+        u.emailVerified ? 1 : 0,
+        u.createdAt ? new Date(u.createdAt) : new Date()
+      ]
+    )
+    if (r.affectedRows) ok++; else skip++
+  }
+  console.log(`移行完了: 新規=${ok} / スキップ=${skip}`)
+  await db.end()
+})().catch(e => { console.error(e); process.exit(1) })
+EOF
+
+node migrate-accounts.js
+```
+
+移行が成功したら、安全のため元ファイルはバックアップにリネーム:
+
+```bash
+mv /srv/http/shouchan-api/accounts.json /srv/http/shouchan-api/accounts.json.bak
+mv /srv/http/shouchan-api/otp_sessions.json /srv/http/shouchan-api/otp_sessions.json.bak 2>/dev/null || true
 ```
 
 ---
@@ -421,8 +530,11 @@ sudo mkdir -p /srv/http/shouchan-api
 sudo chown $USER:$USER /srv/http/shouchan-api
 cd /srv/http/shouchan-api
 npm init -y
-npm install express cors multer bcrypt jsonwebtoken nodemailer express-rate-limit
+npm install express cors multer bcrypt jsonwebtoken nodemailer express-rate-limit mysql2 dotenv
 ```
+
+> アカウント情報は MariaDB で管理します。インストールとスキーマ作成は
+> **「✅ 何をすればいいか」の 1-B) MariaDB のインストールとデータベース作成** を参照してください。
 
 ### 手順4: `server.js` を作成する
 
@@ -430,15 +542,17 @@ npm install express cors multer bcrypt jsonwebtoken nodemailer express-rate-limi
 > ⚠️ `JWT_SECRET` は推測されにくいランダムな長い文字列に**必ず変更**すること。
 
 ```js
-const express = require('express')
-const cors    = require('cors')
-const path    = require('path')
-const fs      = require('fs')
-const multer  = require('multer')
-const bcrypt  = require('bcrypt')
-const jwt     = require('jsonwebtoken')
-const crypto  = require('crypto')
+require('dotenv').config()
+const express    = require('express')
+const cors       = require('cors')
+const path       = require('path')
+const fs         = require('fs')
+const multer     = require('multer')
+const bcrypt     = require('bcrypt')
+const jwt        = require('jsonwebtoken')
+const crypto     = require('crypto')
 const nodemailer = require('nodemailer')
+const mysql      = require('mysql2/promise')
 
 const app = express()
 app.use(cors())
@@ -446,18 +560,28 @@ app.use(express.json())
 
 // ===== 設定 =====
 const BASE_DIR      = '/srv/http/shouchan-api'
-const ADMIN_TOKEN   = 'shouchan-admin-secret-2026-0728' // ← DEV_ADMIN_TOKEN と合わせる
-const JWT_SECRET    = 'your-jwt-secret-change-this'     // ← 必ず変更する
+const ADMIN_TOKEN   = process.env.ADMIN_TOKEN || 'shouchan-admin-secret-2026-0728'
+const JWT_SECRET    = process.env.JWT_SECRET  || 'your-jwt-secret-change-this'
 const MAIL_HOST     = process.env.MAIL_HOST || 'mail.mc-shouchan.jp'
 const MAIL_PORT     = Number(process.env.MAIL_PORT || 587)
 const MAIL_SECURE   = String(process.env.MAIL_SECURE || 'false') === 'true'
 const MAIL_USER     = process.env.MAIL_USER || 'shouchan@mc-shouchan.jp'
 const MAIL_PASS     = process.env.MAIL_PASS || ''
 const MAIL_FROM     = process.env.MAIL_FROM || 'Shouchan Launcher <shouchan@mc-shouchan.jp>'
-const USERS_FILE    = path.join(BASE_DIR, 'accounts.json')
-const OTP_FILE      = path.join(BASE_DIR, 'otp_sessions.json')
 const MODPACKS_FILE = path.join(BASE_DIR, 'modpacks.json')
 const OTP_TTL_MS    = 5 * 60 * 1000
+
+// ===== MariaDB 接続プール =====
+const db = mysql.createPool({
+  host:     process.env.DB_HOST     || '127.0.0.1',
+  port:     Number(process.env.DB_PORT || 3306),
+  user:     process.env.DB_USER     || 'shouchan',
+  password: process.env.DB_PASSWORD || '',
+  database: process.env.DB_NAME     || 'shouchan',
+  waitForConnections: true,
+  connectionLimit: 10,
+  charset: 'utf8mb4_unicode_ci'
+})
 
 const mailTransporter = nodemailer.createTransport({
   host: MAIL_HOST,
@@ -479,10 +603,6 @@ function readJson(file, fallback) {
 function writeJson(file, data) {
   fs.writeFileSync(file, JSON.stringify(data, null, 2))
 }
-function getUsers()       { return readJson(USERS_FILE, []) }
-function saveUsers(u)     { writeJson(USERS_FILE, u) }
-function getOtps()        { return readJson(OTP_FILE, []) }
-function saveOtps(o)      { writeJson(OTP_FILE, o) }
 function getModpacks()    { return readJson(MODPACKS_FILE, []) }
 function saveModpacks(l)  { writeJson(MODPACKS_FILE, l) }
 function modpackDir(id)   { return path.join(BASE_DIR, 'modpacks', id) }
@@ -498,9 +618,36 @@ function makePendingToken() {
 function generateOtpCode() {
   return String(Math.floor(100000 + Math.random() * 900000))
 }
-function cleanupOtps() {
-  const now = Date.now()
-  saveOtps(getOtps().filter(o => o.expiresAt > now))
+
+// ===== DB ヘルパー（users / otp_sessions） =====
+function rowToUser(r) {
+  if (!r) return null
+  return {
+    id: r.id,
+    username: r.username,
+    email: r.email,
+    passwordHash: r.password_hash,
+    role: r.role,
+    createdAt: r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at,
+    settings: r.settings
+      ? (typeof r.settings === 'string' ? JSON.parse(r.settings) : r.settings)
+      : {},
+    emailVerified: !!r.email_verified
+  }
+}
+async function findUserByEmail(email) {
+  const [rows] = await db.query(
+    'SELECT * FROM users WHERE email = ? LIMIT 1',
+    [normalizeEmail(email)]
+  )
+  return rowToUser(rows[0])
+}
+async function findUserById(id) {
+  const [rows] = await db.query('SELECT * FROM users WHERE id = ? LIMIT 1', [id])
+  return rowToUser(rows[0])
+}
+async function cleanupOtps() {
+  await db.query('DELETE FROM otp_sessions WHERE expires_at <= ?', [Date.now()])
 }
 async function sendOtpMail(email, code, purpose) {
   const subject = purpose === 'register'
@@ -544,12 +691,13 @@ function adminAuth(req, res, next) {
   if (token !== ADMIN_TOKEN) return res.status(401).json({ error: 'Unauthorized' })
   next()
 }
-function userAuth(req, res, next) {
+async function userAuth(req, res, next) {
   try {
     const token = req.headers['authorization']?.replace('Bearer ', '')
     const decoded = jwt.verify(token, JWT_SECRET)
-    req.user = getUsers().find(u => u.id === decoded.id)
-    if (!req.user) return res.status(401).json({ error: 'Invalid token' })
+    const user = await findUserById(decoded.id)
+    if (!user) return res.status(401).json({ error: 'Invalid token' })
+    req.user = user
     next()
   } catch { res.status(401).json({ error: 'Invalid token' }) }
 }
@@ -588,143 +736,155 @@ app.use('/modpack/:id/files/download', (req, res, next) => {
 // ===== アカウント API =====
 
 app.post('/account/register/start', async (req, res) => {
-  cleanupOtps()
-  const { username, email, password } = req.body
-  const normalizedEmail = normalizeEmail(email)
-  if (!username || !normalizedEmail || !password) {
-    return res.status(400).json({ error: '全項目を入力してください' })
+  try {
+    await cleanupOtps()
+    const { username, email, password } = req.body
+    const normalizedEmail = normalizeEmail(email)
+    if (!username || !normalizedEmail || !password) {
+      return res.status(400).json({ error: '全項目を入力してください' })
+    }
+    if (await findUserByEmail(normalizedEmail)) {
+      return res.status(400).json({ error: 'このメールアドレスは既に使用されています' })
+    }
+    const code = generateOtpCode()
+    const pendingToken = makePendingToken()
+    const passwordHash = await bcrypt.hash(password, 10)
+    await db.query(
+      `DELETE FROM otp_sessions WHERE email = ? AND purpose = 'register'`,
+      [normalizedEmail]
+    )
+    await db.query(
+      `INSERT INTO otp_sessions
+        (pending_token, purpose, email, username, password_hash, code_hash, attempts, expires_at)
+       VALUES (?, 'register', ?, ?, ?, ?, 0, ?)`,
+      [pendingToken, normalizedEmail, username, passwordHash, hashOtp(code), Date.now() + OTP_TTL_MS]
+    )
+    await sendOtpMail(normalizedEmail, code, 'register')
+    res.json({ success: true, pendingToken })
+  } catch (e) {
+    console.error(e); res.status(500).json({ error: '内部エラー' })
   }
-  const users = getUsers()
-  if (users.find(u => normalizeEmail(u.email) === normalizedEmail)) {
-    return res.status(400).json({ error: 'このメールアドレスは既に使用されています' })
-  }
-
-  const code = generateOtpCode()
-  const pendingToken = makePendingToken()
-  const passwordHash = await bcrypt.hash(password, 10)
-  const otps = getOtps().filter(o => o.email !== normalizedEmail || o.purpose !== 'register')
-  otps.push({
-    pendingToken,
-    purpose: 'register',
-    email: normalizedEmail,
-    username,
-    passwordHash,
-    codeHash: hashOtp(code),
-    attempts: 0,
-    expiresAt: Date.now() + OTP_TTL_MS
-  })
-  saveOtps(otps)
-  await sendOtpMail(normalizedEmail, code, 'register')
-  res.json({ success: true, pendingToken })
 })
 
 app.post('/account/register/verify', async (req, res) => {
-  cleanupOtps()
-  const { pendingToken, code } = req.body
-  const otps = getOtps()
-  const idx = otps.findIndex(o => o.pendingToken === pendingToken && o.purpose === 'register')
-  if (idx === -1) return res.status(400).json({ error: '認証セッションが見つかりません' })
-  const sess = otps[idx]
-  if (sess.expiresAt <= Date.now()) {
-    saveOtps(otps.filter((_, i) => i !== idx))
-    return res.status(400).json({ error: '認証コードの有効期限が切れています' })
-  }
-  if (hashOtp(code) !== sess.codeHash) {
-    sess.attempts += 1
-    if (sess.attempts >= 5) {
-      saveOtps(otps.filter((_, i) => i !== idx))
-      return res.status(400).json({ error: '試行回数超過のため無効になりました' })
+  try {
+    await cleanupOtps()
+    const { pendingToken, code } = req.body
+    const [rows] = await db.query(
+      `SELECT * FROM otp_sessions WHERE pending_token = ? AND purpose = 'register' LIMIT 1`,
+      [pendingToken]
+    )
+    const sess = rows[0]
+    if (!sess) return res.status(400).json({ error: '認証セッションが見つかりません' })
+    if (Number(sess.expires_at) <= Date.now()) {
+      await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+      return res.status(400).json({ error: '認証コードの有効期限が切れています' })
     }
-    saveOtps(otps)
-    return res.status(400).json({ error: '確認コードが正しくありません' })
-  }
+    if (hashOtp(code) !== sess.code_hash) {
+      const attempts = sess.attempts + 1
+      if (attempts >= 5) {
+        await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+        return res.status(400).json({ error: '試行回数超過のため無効になりました' })
+      }
+      await db.query('UPDATE otp_sessions SET attempts = ? WHERE pending_token = ?', [attempts, pendingToken])
+      return res.status(400).json({ error: '確認コードが正しくありません' })
+    }
+    if (await findUserByEmail(sess.email)) {
+      await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+      return res.status(400).json({ error: 'このメールアドレスは既に使用されています' })
+    }
 
-  const users = getUsers()
-  if (users.find(u => normalizeEmail(u.email) === sess.email)) {
-    saveOtps(otps.filter((_, i) => i !== idx))
-    return res.status(400).json({ error: 'このメールアドレスは既に使用されています' })
+    const id = Date.now().toString()
+    const createdAt = new Date()
+    await db.query(
+      `INSERT INTO users
+        (id, username, email, password_hash, role, settings, email_verified, created_at)
+       VALUES (?, ?, ?, ?, 'player', ?, 1, ?)`,
+      [id, sess.username, sess.email, sess.password_hash, JSON.stringify({}), createdAt]
+    )
+    await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+    const token = jwt.sign({ id }, JWT_SECRET, { expiresIn: '30d' })
+    res.json({
+      success: true, id, username: sess.username, email: sess.email,
+      token, role: 'player', createdAt: createdAt.toISOString()
+    })
+  } catch (e) {
+    console.error(e); res.status(500).json({ error: '内部エラー' })
   }
-  const user = {
-    id: Date.now().toString(),
-    username: sess.username,
-    email: sess.email,
-    passwordHash: sess.passwordHash,
-    role: 'player',
-    createdAt: new Date().toISOString(),
-    settings: {},
-    emailVerified: true
-  }
-  users.push(user)
-  saveUsers(users)
-  saveOtps(otps.filter((_, i) => i !== idx))
-  const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' })
-  res.json({ success: true, id: user.id, username: user.username, email: user.email, token, role: user.role, createdAt: user.createdAt })
 })
 
 app.post('/account/login/start', async (req, res) => {
-  cleanupOtps()
-  const { email, password } = req.body
-  const normalizedEmail = normalizeEmail(email)
-  const user = getUsers().find(u => normalizeEmail(u.email) === normalizedEmail)
-  if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
-    return res.status(401).json({ error: 'メールアドレスまたはパスワードが間違っています' })
+  try {
+    await cleanupOtps()
+    const { email, password } = req.body
+    const normalizedEmail = normalizeEmail(email)
+    const user = await findUserByEmail(normalizedEmail)
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      return res.status(401).json({ error: 'メールアドレスまたはパスワードが間違っています' })
+    }
+    const code = generateOtpCode()
+    const pendingToken = makePendingToken()
+    await db.query(
+      `DELETE FROM otp_sessions WHERE email = ? AND purpose = 'login'`,
+      [normalizedEmail]
+    )
+    await db.query(
+      `INSERT INTO otp_sessions
+        (pending_token, purpose, email, user_id, code_hash, attempts, expires_at)
+       VALUES (?, 'login', ?, ?, ?, 0, ?)`,
+      [pendingToken, normalizedEmail, user.id, hashOtp(code), Date.now() + OTP_TTL_MS]
+    )
+    await sendOtpMail(normalizedEmail, code, 'login')
+    res.json({ success: true, pendingToken })
+  } catch (e) {
+    console.error(e); res.status(500).json({ error: '内部エラー' })
   }
-
-  const code = generateOtpCode()
-  const pendingToken = makePendingToken()
-  const otps = getOtps().filter(o => o.email !== normalizedEmail || o.purpose !== 'login')
-  otps.push({
-    pendingToken,
-    purpose: 'login',
-    email: normalizedEmail,
-    userId: user.id,
-    codeHash: hashOtp(code),
-    attempts: 0,
-    expiresAt: Date.now() + OTP_TTL_MS
-  })
-  saveOtps(otps)
-  await sendOtpMail(normalizedEmail, code, 'login')
-  res.json({ success: true, pendingToken })
 })
 
-app.post('/account/login/verify', (req, res) => {
-  cleanupOtps()
-  const { pendingToken, code } = req.body
-  const otps = getOtps()
-  const idx = otps.findIndex(o => o.pendingToken === pendingToken && o.purpose === 'login')
-  if (idx === -1) return res.status(400).json({ error: '認証セッションが見つかりません' })
-  const sess = otps[idx]
-  if (sess.expiresAt <= Date.now()) {
-    saveOtps(otps.filter((_, i) => i !== idx))
-    return res.status(400).json({ error: '認証コードの有効期限が切れています' })
-  }
-  if (hashOtp(code) !== sess.codeHash) {
-    sess.attempts += 1
-    if (sess.attempts >= 5) {
-      saveOtps(otps.filter((_, i) => i !== idx))
-      return res.status(400).json({ error: '試行回数超過のため無効になりました' })
+app.post('/account/login/verify', async (req, res) => {
+  try {
+    await cleanupOtps()
+    const { pendingToken, code } = req.body
+    const [rows] = await db.query(
+      `SELECT * FROM otp_sessions WHERE pending_token = ? AND purpose = 'login' LIMIT 1`,
+      [pendingToken]
+    )
+    const sess = rows[0]
+    if (!sess) return res.status(400).json({ error: '認証セッションが見つかりません' })
+    if (Number(sess.expires_at) <= Date.now()) {
+      await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+      return res.status(400).json({ error: '認証コードの有効期限が切れています' })
     }
-    saveOtps(otps)
-    return res.status(400).json({ error: '確認コードが正しくありません' })
-  }
+    if (hashOtp(code) !== sess.code_hash) {
+      const attempts = sess.attempts + 1
+      if (attempts >= 5) {
+        await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+        return res.status(400).json({ error: '試行回数超過のため無効になりました' })
+      }
+      await db.query('UPDATE otp_sessions SET attempts = ? WHERE pending_token = ?', [attempts, pendingToken])
+      return res.status(400).json({ error: '確認コードが正しくありません' })
+    }
 
-  const user = getUsers().find(u => u.id === sess.userId)
-  if (!user) {
-    saveOtps(otps.filter((_, i) => i !== idx))
-    return res.status(401).json({ error: 'ユーザーが存在しません' })
+    const user = await findUserById(sess.user_id)
+    if (!user) {
+      await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+      return res.status(401).json({ error: 'ユーザーが存在しません' })
+    }
+    await db.query('DELETE FROM otp_sessions WHERE pending_token = ?', [pendingToken])
+    const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' })
+    res.json({
+      success: true,
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      token,
+      role: user.role,
+      createdAt: user.createdAt,
+      settings: user.settings || {}
+    })
+  } catch (e) {
+    console.error(e); res.status(500).json({ error: '内部エラー' })
   }
-  saveOtps(otps.filter((_, i) => i !== idx))
-  const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '30d' })
-  res.json({
-    success: true,
-    id: user.id,
-    username: user.username,
-    email: user.email,
-    token,
-    role: user.role,
-    createdAt: user.createdAt,
-    settings: user.settings || {}
-  })
 })
 
 app.get('/account/profile', userAuth, (req, res) => {
@@ -732,11 +892,9 @@ app.get('/account/profile', userAuth, (req, res) => {
   res.json(safe)
 })
 
-app.put('/account/settings', userAuth, (req, res) => {
-  const users = getUsers()
-  const idx = users.findIndex(u => u.id === req.user.id)
-  users[idx].settings = { ...users[idx].settings, ...req.body.settings }
-  saveUsers(users)
+app.put('/account/settings', userAuth, async (req, res) => {
+  const next = { ...(req.user.settings || {}), ...(req.body.settings || {}) }
+  await db.query('UPDATE users SET settings = ? WHERE id = ?', [JSON.stringify(next), req.user.id])
   res.json({ success: true })
 })
 
@@ -821,10 +979,18 @@ app.put('/admin/news', adminAuth, (req, res) => {
   res.json({ success: true })
 })
 
-app.listen(3000, () => console.log('Shouchan API running on port 3000'))
+// 起動前に MariaDB 導通確認
+db.query('SELECT 1').then(() => {
+  app.listen(3000, () => console.log('Shouchan API running on port 3000'))
+}).catch(err => {
+  console.error('MariaDB 接続に失敗しました:', err.message)
+  process.exit(1)
+})
 ```
 
-### 手順5: 初期JSONファイルを作成する
+### 手順5: 初期ファイルを作成する
+
+> アカウントと OTP セッションは MariaDB に保存されるため、JSON ファイルは作りません。
 
 **`/srv/http/shouchan-api/modpacks.json`**
 ```json
@@ -836,11 +1002,6 @@ app.listen(3000, () => console.log('Shouchan API running on port 3000'))
 [{ "id": 1, "title": "最新情報", "content": "Shouchan Launcherへようこそ！", "date": "2026-04-10T00:00:00.000Z" }]
 ```
 
-**`/srv/http/shouchan-api/otp_sessions.json`**
-```json
-[]
-```
-
 > ModPackはランチャーの開発者メニュー「ModPack管理」タブから作成します。  
 > 作成するとサーバー上に `/srv/http/shouchan-api/modpacks/{id}/` が自動生成されます。
 
@@ -849,8 +1010,7 @@ app.listen(3000, () => console.log('Shouchan API running on port 3000'))
 ```
 /srv/http/shouchan-api/
 ├── server.js
-├── accounts.json       # ユーザーアカウント
-├── otp_sessions.json   # OTPセッション
+├── .env                # DB/SMTP/JWT等の設定（chmod 600）
 ├── modpacks.json       # ModPack一覧
 ├── news.json           # ニュース記事
 └── modpacks/
@@ -969,15 +1129,14 @@ curl -i -X POST https://mc-shouchan.jp/account/login/start -H 'Content-Type: app
 ### 4) 開発者権限の付与方法
 
 ```bash
-node -e "
-const fs = require('fs');
-const file = '/srv/http/shouchan-api/accounts.json';
-const users = JSON.parse(fs.readFileSync(file));
-const target = '対象のメールアドレス'.trim().toLowerCase();
-const u = users.find(u => String(u.email || '').trim().toLowerCase() === target);
-if (u) { u.role = 'developer'; fs.writeFileSync(file, JSON.stringify(users, null, 2)); console.log('Done:', u.username); }
-else console.log('User not found');
-"
+sudo mariadb shouchan -e \
+  "UPDATE users SET role='developer' WHERE email=LOWER(TRIM('対象のメールアドレス'));"
+```
+
+確認:
+
+```bash
+sudo mariadb shouchan -e "SELECT id, username, email, role FROM users;"
 ```
 
 ### 5) 配布前チェック

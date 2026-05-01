@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { LauncherAccount, Stats, NewsItem, LaunchStatus, ServerModpack } from '../types'
 
-const SERVER_URL = 'https://mc-shouchan.jp'
+const SERVER_URL = 'https://mc-shouchan.jp/api'
 const MC_SERVER_HOST = 'mc-shouchan.jp'
 
 interface HomeViewProps {
