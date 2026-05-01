@@ -319,7 +319,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     setLauncherIconLoading(true)
     const res = await window.api.setLauncherIcon(localPath)
     setLauncherIconLoading(false)
-    if (res.success) { ok('ランチャーアイコンを変更しました'); loadLauncherIcon(); onLauncherIconChange?.() }
+    if (res.success) { ok('ランチャーアイコンを変更しました（次回起動時に反映）'); loadLauncherIcon() }
     else err(res.error || 'アイコンの変更に失敗')
   }
 
@@ -331,7 +331,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
       ok('ランチャーアイコンをデフォルトに戻しました')
       setLauncherIconPath(null)
       setLauncherIconPreview('')
-      onLauncherIconChange?.()
     } else err(res.error || 'リセット失敗')
   }
 

@@ -142,7 +142,6 @@ declare global {
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountSyncSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>
       accountVerifyToken: () => Promise<{ success: boolean; role?: 'developer' | 'player'; error?: string }>
-      accountAvatarSync: (avatar: string | null) => Promise<{ success: boolean; error?: string }>
 
       fetchModpackList: () => Promise<{ success: boolean; data?: ServerModpack[]; error?: string }>
       fetchModpackLaunchInfo: (id: string) => Promise<{ success: boolean; data?: ServerModpack; error?: string }>

@@ -1,12 +1,11 @@
 import React, { useEffect, useRef } from 'react'
-import { Terminal, Trash2 } from 'lucide-react'
+import { Terminal } from 'lucide-react'
 
 interface LogsViewProps {
   logs: string[]
-  onClear?: () => void
 }
 
-export default function LogsView({ logs, onClear }: LogsViewProps): React.JSX.Element {
+export default function LogsView({ logs }: LogsViewProps): React.JSX.Element {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -19,15 +18,6 @@ export default function LogsView({ logs, onClear }: LogsViewProps): React.JSX.El
         <Terminal size={16} className="text-green-400" />
         <h2 className="text-sm font-semibold text-white">ゲームログ</h2>
         <span className="ml-auto text-xs text-gray-500">{logs.length} 行</span>
-        <button
-          onClick={onClear}
-          disabled={!onClear || logs.length === 0}
-          className="flex items-center gap-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-2.5 py-1 text-xs text-red-400 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-          title="ログをクリア"
-        >
-          <Trash2 size={12} />
-          クリア
-        </button>
       </div>
       <div className="flex-1 overflow-y-auto rounded-lg bg-[#0a0a10] border border-white/5 p-3 font-mono text-xs text-green-400">
         {logs.length === 0 ? (

@@ -18,13 +18,12 @@ interface ServerFile {
 interface DeveloperMenuProps {
   mcUsername: string
   onMcUsernameChange: (username: string) => void
-  onLauncherIconChange?: () => void
 }
 
 const INPUT = 'w-full rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 transition-colors'
 const SELECT = 'w-full rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-sm text-white outline-none focus:border-yellow-500/50 transition-colors'
 
-export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLauncherIconChange }: DeveloperMenuProps): React.JSX.Element {
+export default function DeveloperMenu({ mcUsername, onMcUsernameChange }: DeveloperMenuProps): React.JSX.Element {
   const [tab, setTab] = useState<DevTab>('modpacks')
   const [status, setStatus] = useState<{ msg: string; type: 'idle' | 'ok' | 'error' }>({ msg: '', type: 'idle' })
   const [modpacks, setModpacks] = useState<ServerModpack[]>([])
@@ -319,7 +318,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     setLauncherIconLoading(true)
     const res = await window.api.setLauncherIcon(localPath)
     setLauncherIconLoading(false)
-    if (res.success) { ok('ランチャーアイコンを変更しました'); loadLauncherIcon(); onLauncherIconChange?.() }
+    if (res.success) { ok('ランチャーアイコンを変更しました（次回起動時に反映）'); loadLauncherIcon() }
     else err(res.error || 'アイコンの変更に失敗')
   }
 
@@ -331,7 +330,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
       ok('ランチャーアイコンをデフォルトに戻しました')
       setLauncherIconPath(null)
       setLauncherIconPreview('')
-      onLauncherIconChange?.()
     } else err(res.error || 'リセット失敗')
   }
 

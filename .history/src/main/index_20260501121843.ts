@@ -1846,12 +1846,9 @@ ipcMain.handle('set-launcher-icon', async (_e, sourcePath: string) => {
     // 実行中ウィンドウにも反映
     try {
       const { nativeImage } = await import('electron')
-      const imgBuffer = fs.readFileSync(dest)
-      const img = nativeImage.createFromBuffer(imgBuffer)
-      if (!img.isEmpty()) {
-        for (const w of BrowserWindow.getAllWindows()) {
-          if (!w.isDestroyed()) w.setIcon(img)
-        }
+      const img = nativeImage.createFromPath(dest)
+      for (const w of BrowserWindow.getAllWindows()) {
+        if (!w.isDestroyed()) w.setIcon(img)
       }
     } catch {}
     return { success: true, iconPath: dest }
@@ -1939,8 +1936,7 @@ ipcMain.handle('account-register-verify', async (_e, { pendingToken, code }: { p
       email: (res.data.email as string) || fallbackEmail,
       role: (res.data.role as 'developer' | 'player') || 'player',
       createdAt: (res.data.createdAt as string) || new Date().toISOString(),
-      token: res.data.token,
-      ...(res.data.avatar ? { avatar: res.data.avatar as string } : {})
+      token: res.data.token
     }
     store.set('launcherAccount', account)
     store.delete('auth.pendingRegisterEmail')
@@ -1971,8 +1967,7 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
       email: (res.data.email as string) || fallbackEmail,
       role: (res.data.role as 'developer' | 'player') || 'player',
       createdAt: res.data.createdAt,
-      token: res.data.token,
-      ...(res.data.avatar ? { avatar: res.data.avatar as string } : {})
+      token: res.data.token
     }
     store.set('launcherAccount', account)
     store.delete('auth.pendingLoginEmail')
@@ -2026,20 +2021,6 @@ ipcMain.handle('account-sync-settings', async () => {
   }
 })
 
-ipcMain.handle('account-avatar-sync', async (_e, avatar: string | null) => {
-  try {
-    const account = store.get('launcherAccount') as { token?: string } | null
-    if (!account?.token) return { success: false, error: 'Not logged in' }
-    await axios.post(`${MODPACK_SERVER_URL}/account/avatar`, { avatar: avatar ?? null }, {
-      headers: { Authorization: `Bearer ${account.token}` },
-      timeout: 15000
-    })
-    return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
 ipcMain.handle('account-verify-token', async () => {
   try {
     const account = store.get('launcherAccount') as { token?: string; role?: string } | null
@@ -2074,15 +2055,16 @@ ipcMain.handle('fetch-modpack-list', async () => {
 ipcMain.handle('check-modpack-update-by-id', async (_e, id: string) => {
   const localVersion = (store.get(`modpack.versions.${id}`, '') as string) || ''
   try {
-    // modpacks.json のバージョンと比較（開発者が編集フォームで変更したらユーザーに更新を求める）
     const infoRes = await axios.get(modpackInfoUrl(id), { timeout: 10000 })
     const serverVersion: string = infoRes.data.version || ''
     if (serverVersion === localVersion) return { hasUpdate: false, serverVersion, localVersion }
+
     try {
       await axios.get(modpackFilesUrl(id), { timeout: 8000 })
     } catch {
       return { hasUpdate: false, serverVersion, localVersion }
     }
+
     return { hasUpdate: true, serverVersion, localVersion }
   } catch {
     return { hasUpdate: false, serverVersion: null, localVersion }
@@ -2102,13 +2084,6 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       const relativePath = normalizePath(file.path)
       const filePath = path.join(modpackDir, relativePath)
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
-      // 隠しディレクトリ内のファイル（Packwiz .index/ など）はスキップ
-      if (relativePath.split('/').some(part => part.startsWith('.'))) {
-        completed++
-        event.sender.send('modpack-progress', { completed, total: files.length, file: relativePath })
-        continue
-      }
-
       try {
         const fileRes = await axios.get(resolveManifestUrl(id, file), { responseType: 'arraybuffer', timeout: 120000 })
         fs.writeFileSync(filePath, Buffer.from(fileRes.data))
@@ -2124,12 +2099,11 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       event.sender.send('modpack-progress', { completed, total: files.length, file: relativePath })
     }
 
-    // modpacks.json のバージョンを保存（次回の更新チェックと一致させる）
     try {
       const infoRes = await axios.get(modpackInfoUrl(id), { timeout: 10000 })
-      store.set(`modpack.versions.${id}`, infoRes.data.version || (res.headers['x-modpack-version'] as string) || 'unknown')
+      store.set(`modpack.versions.${id}`, infoRes.data.version || res.headers['x-modpack-version'] || 'unknown')
     } catch {
-      store.set(`modpack.versions.${id}`, (res.headers['x-modpack-version'] as string) || 'unknown')
+      store.set(`modpack.versions.${id}`, res.headers['x-modpack-version'] || 'unknown')
     }
     return { success: true }
   } catch (err: unknown) {
@@ -2216,7 +2190,6 @@ ipcMain.handle('dev-upload-modpack-dir-by-id', async (event, id: string, localDi
     const files: Array<{ localPath: string; relativePath: string }> = []
     function scanDir(dir: string, base: string = '') {
       for (const entry of fs.readdirSync(dir)) {
-        if (entry.startsWith('.')) continue // 隠しファイル・ディレクトリ（.index/等）はスキップ
         const full = path.join(dir, entry)
         const rel = base ? `${base}/${entry}` : entry
         if (fs.statSync(full).isDirectory()) scanDir(full, rel)

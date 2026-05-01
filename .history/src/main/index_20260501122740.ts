@@ -2074,15 +2074,16 @@ ipcMain.handle('fetch-modpack-list', async () => {
 ipcMain.handle('check-modpack-update-by-id', async (_e, id: string) => {
   const localVersion = (store.get(`modpack.versions.${id}`, '') as string) || ''
   try {
-    // modpacks.json のバージョンと比較（開発者が編集フォームで変更したらユーザーに更新を求める）
     const infoRes = await axios.get(modpackInfoUrl(id), { timeout: 10000 })
     const serverVersion: string = infoRes.data.version || ''
     if (serverVersion === localVersion) return { hasUpdate: false, serverVersion, localVersion }
+
     try {
       await axios.get(modpackFilesUrl(id), { timeout: 8000 })
     } catch {
       return { hasUpdate: false, serverVersion, localVersion }
     }
+
     return { hasUpdate: true, serverVersion, localVersion }
   } catch {
     return { hasUpdate: false, serverVersion: null, localVersion }
@@ -2102,13 +2103,6 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       const relativePath = normalizePath(file.path)
       const filePath = path.join(modpackDir, relativePath)
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
-      // 隠しディレクトリ内のファイル（Packwiz .index/ など）はスキップ
-      if (relativePath.split('/').some(part => part.startsWith('.'))) {
-        completed++
-        event.sender.send('modpack-progress', { completed, total: files.length, file: relativePath })
-        continue
-      }
-
       try {
         const fileRes = await axios.get(resolveManifestUrl(id, file), { responseType: 'arraybuffer', timeout: 120000 })
         fs.writeFileSync(filePath, Buffer.from(fileRes.data))
@@ -2124,12 +2118,11 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       event.sender.send('modpack-progress', { completed, total: files.length, file: relativePath })
     }
 
-    // modpacks.json のバージョンを保存（次回の更新チェックと一致させる）
     try {
       const infoRes = await axios.get(modpackInfoUrl(id), { timeout: 10000 })
-      store.set(`modpack.versions.${id}`, infoRes.data.version || (res.headers['x-modpack-version'] as string) || 'unknown')
+      store.set(`modpack.versions.${id}`, infoRes.data.version || res.headers['x-modpack-version'] || 'unknown')
     } catch {
-      store.set(`modpack.versions.${id}`, (res.headers['x-modpack-version'] as string) || 'unknown')
+      store.set(`modpack.versions.${id}`, res.headers['x-modpack-version'] || 'unknown')
     }
     return { success: true }
   } catch (err: unknown) {
@@ -2216,7 +2209,6 @@ ipcMain.handle('dev-upload-modpack-dir-by-id', async (event, id: string, localDi
     const files: Array<{ localPath: string; relativePath: string }> = []
     function scanDir(dir: string, base: string = '') {
       for (const entry of fs.readdirSync(dir)) {
-        if (entry.startsWith('.')) continue // 隠しファイル・ディレクトリ（.index/等）はスキップ
         const full = path.join(dir, entry)
         const rel = base ? `${base}/${entry}` : entry
         if (fs.statSync(full).isDirectory()) scanDir(full, rel)

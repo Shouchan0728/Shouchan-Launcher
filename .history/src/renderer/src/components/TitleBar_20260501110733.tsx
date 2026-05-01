@@ -6,21 +6,20 @@ interface TitleBarProps {
   appVersion: string
   launcherAccount: LauncherAccount | null
   mcUsername: string
-  launcherIconUrl?: string
 }
 
-export default function TitleBar({ appVersion, launcherAccount, mcUsername, launcherIconUrl }: TitleBarProps): React.JSX.Element {
+export default function TitleBar({ appVersion, launcherAccount, mcUsername }: TitleBarProps): React.JSX.Element {
   return (
     <div
       className="flex h-9 items-center justify-between bg-[#0d0d14] px-3 select-none flex-shrink-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       <div className="flex items-center gap-2">
-        {launcherIconUrl ? (
-          <img src={launcherIconUrl} alt="launcher icon" className="h-6 w-6 rounded flex-shrink-0 object-cover" />
+        {launcherAccount?.avatar ? (
+          <img src={launcherAccount.avatar} alt="avatar" className="h-6 w-6 rounded-full object-cover flex-shrink-0 border border-white/10" />
         ) : (
-          <div className="h-6 w-6 rounded flex items-center justify-center bg-yellow-400 text-black font-bold text-xs flex-shrink-0 select-none">
-            S
+          <div className="h-6 w-6 rounded-full bg-yellow-400 flex items-center justify-center text-black font-bold text-xs flex-shrink-0">
+            {(launcherAccount?.username || 'S')[0]?.toUpperCase() || 'S'}
           </div>
         )}
         <span className="text-sm font-semibold text-white">Shouchan Launcher</span>

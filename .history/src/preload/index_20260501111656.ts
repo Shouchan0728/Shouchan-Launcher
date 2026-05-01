@@ -40,7 +40,6 @@ const api = {
   accountSyncSettings: (settings: unknown) =>
     ipcRenderer.invoke('account-sync-settings', settings),
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),
-  accountAvatarSync: (avatar: string | null) => ipcRenderer.invoke('account-avatar-sync', avatar),
 
   fetchModpackList: () => ipcRenderer.invoke('fetch-modpack-list'),
   fetchModpackLaunchInfo: (id: string) => ipcRenderer.invoke('fetch-modpack-launch-info', id),

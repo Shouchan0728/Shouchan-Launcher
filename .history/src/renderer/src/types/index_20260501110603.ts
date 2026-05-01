@@ -78,11 +78,10 @@ export interface ServerModpack {
   loaderVersion?: string
   description?: string
   downloadTargets?: string[]
-  icon?: string // data URL
 }
 
 export type LaunchStatus = 'idle' | 'updating' | 'launching' | 'running' | 'error'
-export type ViewType = 'home' | 'settings' | 'logs' | 'developer' | 'account'
+export type ViewType = 'home' | 'settings' | 'logs' | 'developer'
 export type AppState = 'loading' | 'setup' | 'login' | 'reauth' | 'main'
 
 export interface UpdateState {
@@ -142,7 +141,6 @@ declare global {
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountSyncSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>
       accountVerifyToken: () => Promise<{ success: boolean; role?: 'developer' | 'player'; error?: string }>
-      accountAvatarSync: (avatar: string | null) => Promise<{ success: boolean; error?: string }>
 
       fetchModpackList: () => Promise<{ success: boolean; data?: ServerModpack[]; error?: string }>
       fetchModpackLaunchInfo: (id: string) => Promise<{ success: boolean; data?: ServerModpack; error?: string }>
@@ -154,7 +152,6 @@ declare global {
       devUpdateModpack: (id: string, info: Partial<ServerModpack>) => Promise<{ success: boolean; error?: string }>
       devDeleteModpack: (id: string) => Promise<{ success: boolean; error?: string }>
       devUploadModpackDirById: (id: string, localDir: string, version: string) => Promise<{ success: boolean; error?: string }>
-      devUploadModpackIcon: (id: string, localPath: string) => Promise<{ success: boolean; iconUrl?: string; error?: string }>
       onUploadProgress: (cb: (data: { current: number; total: number; file: string }) => void) => () => void
 
       devGetFiles: (modpackId: string) => Promise<{ success: boolean; data?: unknown[]; error?: string }>
@@ -167,18 +164,6 @@ declare global {
       devUpdateNews: (news: NewsItem[]) => Promise<{ success: boolean; error?: string }>
 
       clearCache: (type: 'versions' | 'libraries' | 'all') => Promise<{ success: boolean; cleared?: string[]; error?: string }>
-
-      openPath: (target: string) => Promise<{ success: boolean; error?: string }>
-      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
-      getRecommendedGameDir: () => Promise<string>
-
-      isLaunchingMinecraft: () => Promise<boolean>
-
-      setLauncherIcon: (sourcePath: string) => Promise<{ success: boolean; iconPath?: string; error?: string }>
-      resetLauncherIcon: () => Promise<{ success: boolean; error?: string }>
-      getLauncherIcon: () => Promise<{ success: boolean; iconPath: string | null }>
-
-      readImageAsDataUrl: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
 
       // アップデート機能
       checkForUpdates: () => Promise<{ success: boolean; error?: string }>

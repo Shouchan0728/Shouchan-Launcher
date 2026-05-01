@@ -40,7 +40,6 @@ const api = {
   accountSyncSettings: (settings: unknown) =>
     ipcRenderer.invoke('account-sync-settings', settings),
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),
-  accountAvatarSync: (avatar: string | null) => ipcRenderer.invoke('account-avatar-sync', avatar),
 
   fetchModpackList: () => ipcRenderer.invoke('fetch-modpack-list'),
   fetchModpackLaunchInfo: (id: string) => ipcRenderer.invoke('fetch-modpack-launch-info', id),
@@ -53,8 +52,6 @@ const api = {
   devDeleteModpack: (id: string) => ipcRenderer.invoke('dev-delete-modpack', id),
   devUploadModpackDirById: (id: string, localDir: string, version: string) =>
     ipcRenderer.invoke('dev-upload-modpack-dir-by-id', id, localDir, version),
-  devUploadModpackIcon: (id: string, localPath: string) =>
-    ipcRenderer.invoke('dev-upload-modpack-icon', id, localPath),
 
   devGetFiles: (modpackId: string) => ipcRenderer.invoke('dev-get-files', modpackId),
   devUploadFile: (modpackId: string, localPath: string, serverPath: string) =>

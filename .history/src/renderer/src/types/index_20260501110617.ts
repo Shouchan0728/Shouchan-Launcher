@@ -142,7 +142,6 @@ declare global {
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountSyncSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>
       accountVerifyToken: () => Promise<{ success: boolean; role?: 'developer' | 'player'; error?: string }>
-      accountAvatarSync: (avatar: string | null) => Promise<{ success: boolean; error?: string }>
 
       fetchModpackList: () => Promise<{ success: boolean; data?: ServerModpack[]; error?: string }>
       fetchModpackLaunchInfo: (id: string) => Promise<{ success: boolean; data?: ServerModpack; error?: string }>
@@ -154,7 +153,6 @@ declare global {
       devUpdateModpack: (id: string, info: Partial<ServerModpack>) => Promise<{ success: boolean; error?: string }>
       devDeleteModpack: (id: string) => Promise<{ success: boolean; error?: string }>
       devUploadModpackDirById: (id: string, localDir: string, version: string) => Promise<{ success: boolean; error?: string }>
-      devUploadModpackIcon: (id: string, localPath: string) => Promise<{ success: boolean; iconUrl?: string; error?: string }>
       onUploadProgress: (cb: (data: { current: number; total: number; file: string }) => void) => () => void
 
       devGetFiles: (modpackId: string) => Promise<{ success: boolean; data?: unknown[]; error?: string }>

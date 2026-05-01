@@ -223,13 +223,9 @@ export default function HomeView({
       {/* ── Header bar ── */}
       <div className="flex items-center gap-3 px-5 py-2.5 border-b border-white/5 bg-[#0d0d14] flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          {launcherAccount?.avatar ? (
-            <img src={launcherAccount.avatar} alt="avatar" className="h-7 w-7 rounded-full object-cover flex-shrink-0 border border-white/10" />
-          ) : (
-            <div className="h-7 w-7 rounded-full bg-yellow-400 flex items-center justify-center text-black font-bold text-xs flex-shrink-0">
-              {(launcherAccount?.username || mcUsername || '?')[0].toUpperCase()}
-            </div>
-          )}
+          <div className="h-7 w-7 rounded-full bg-yellow-400 flex items-center justify-center text-black font-bold text-xs flex-shrink-0">
+            {(launcherAccount?.username || mcUsername || '?')[0].toUpperCase()}
+          </div>
           <div>
             <p className="text-sm font-semibold leading-tight">
               ようこそ、{launcherAccount?.username || mcUsername}さん
@@ -348,13 +344,13 @@ export default function HomeView({
 
           {/* Launch button */}
           <button onClick={handleLaunch}
-            disabled={isLaunching || launchStatus === 'running' || updateAvailable || !mcUsername}
+            disabled={isLaunching || launchStatus === 'running' || updateAvailable}
             className={`w-full flex items-center justify-center gap-3 rounded-xl py-4 text-base font-bold transition-all select-none ${
               launchStatus === 'running'
                 ? 'bg-green-800/80 cursor-not-allowed'
                 : isLaunching
                   ? 'bg-green-800/60 cursor-not-allowed'
-                  : updateAvailable || !mcUsername
+                  : updateAvailable
                     ? 'bg-[#1a1a2e] border border-white/8 text-gray-500 cursor-not-allowed'
                     : 'bg-green-600 hover:bg-green-500 active:scale-[0.985] shadow-lg shadow-green-950/60'
             }`}>
@@ -364,8 +360,6 @@ export default function HomeView({
               <><Gamepad2 size={18} />プレイ中...</>
             ) : updateAvailable ? (
               <><AlertTriangle size={18} />先に更新してください</>
-            ) : !mcUsername ? (
-              <><User size={18} />マイページからMicrosoftアカウントを連携してください</>
             ) : (
               <><Play size={18} fill="currentColor" />Minecraft を起動する</>
             )}

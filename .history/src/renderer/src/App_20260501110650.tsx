@@ -22,7 +22,6 @@ export default function App(): React.JSX.Element {
   const [appVersion, setAppVersion] = useState('1.0.0')
   const [reauthError, setReauthError] = useState('')
   const [launchStatus, setLaunchStatus] = useState<LaunchStatus>('idle')
-  const [launcherIconUrl, setLauncherIconUrl] = useState('')
 
   // アップデート状態
   const [updateState, setUpdateState] = useState<UpdateState>({
@@ -31,18 +30,6 @@ export default function App(): React.JSX.Element {
     downloaded: false
   })
   const [showUpdateNotifier, setShowUpdateNotifier] = useState(true)
-
-  const loadLauncherIcon = async () => {
-    const res = await window.api.getLauncherIcon()
-    if (res.success && res.iconPath) {
-      const imgRes = await window.api.readImageAsDataUrl(res.iconPath)
-      setLauncherIconUrl(imgRes.success && imgRes.dataUrl ? imgRes.dataUrl : '')
-    } else {
-      setLauncherIconUrl('')
-    }
-  }
-
-  useEffect(() => { loadLauncherIcon() }, [])
 
   useEffect(() => {
     const init = async () => {
@@ -71,11 +58,7 @@ export default function App(): React.JSX.Element {
         setAppState('reauth')
         return
       }
-      if (mcAuth?.name) {
-        setMcUsername(mcAuth.name)
-      } else if (currentAccount.linkedMicrosoft?.name) {
-        setMcUsername(currentAccount.linkedMicrosoft.name)
-      }
+      if (mcAuth) setMcUsername(mcAuth.name)
 
       const launches = ((await window.api.getStore('stats.launches')) as number) || 0
       const playTime = ((await window.api.getStore('stats.playTimeMinutes')) as number) || 0
@@ -132,25 +115,9 @@ export default function App(): React.JSX.Element {
     setAppState('main')
   }
 
-  const handleLoginComplete = async (account: LauncherAccount, username: string) => {
-    // 同一ユーザーの既存データからローカル設定フィールドを引き継ぐ
-    const existing = await window.api.getStore('launcherAccount') as LauncherAccount | null
-    const isSameUser = existing?.id === account.id
-
-    const finalAccount: LauncherAccount = {
-      ...account,
-      ...(isSameUser && existing?.linkedMicrosoft ? { linkedMicrosoft: existing.linkedMicrosoft } : {}),
-      ...(isSameUser && existing?.avatar ? { avatar: existing.avatar } : {}),
-    }
-    await window.api.setStore('launcherAccount', finalAccount)
-
-    let finalMcUsername = username
-    const mcAuth = await window.api.getStore('mc.auth') as { name: string } | null
-    if (!finalMcUsername && mcAuth?.name) finalMcUsername = mcAuth.name
-    if (!finalMcUsername && finalAccount.linkedMicrosoft?.name) finalMcUsername = finalAccount.linkedMicrosoft.name
-
-    setLauncherAccount(finalAccount)
-    setMcUsername(finalMcUsername)
+  const handleLoginComplete = (account: LauncherAccount, username: string) => {
+    setLauncherAccount(account)
+    setMcUsername(username)
     setAppState('main')
   }
 
@@ -166,6 +133,7 @@ export default function App(): React.JSX.Element {
   }
 
   const handleLogout = async () => {
+    await window.api.logoutMC()
     await window.api.deleteStore('launcherAccount')
     setLauncherAccount(null)
     setMcUsername('')
@@ -231,7 +199,7 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#111117] text-white overflow-hidden">
-      <TitleBar appVersion={appVersion} launcherAccount={launcherAccount} mcUsername={mcUsername} launcherIconUrl={launcherIconUrl} />
+      <TitleBar appVersion={appVersion} launcherAccount={launcherAccount} mcUsername={mcUsername} />
       {showUpdateNotifier && (
         <UpdateNotifier
           updateState={updateState}
@@ -268,7 +236,7 @@ export default function App(): React.JSX.Element {
             />
           )}
           {view === 'developer' && launcherAccount?.role === 'developer' && (
-            <DeveloperMenu mcUsername={mcUsername} onMcUsernameChange={setMcUsername} onLauncherIconChange={loadLauncherIcon} />
+            <DeveloperMenu mcUsername={mcUsername} onMcUsernameChange={setMcUsername} />
           )}
         </main>
       </div>

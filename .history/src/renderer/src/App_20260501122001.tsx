@@ -71,11 +71,7 @@ export default function App(): React.JSX.Element {
         setAppState('reauth')
         return
       }
-      if (mcAuth?.name) {
-        setMcUsername(mcAuth.name)
-      } else if (currentAccount.linkedMicrosoft?.name) {
-        setMcUsername(currentAccount.linkedMicrosoft.name)
-      }
+      if (mcAuth) setMcUsername(mcAuth.name)
 
       const launches = ((await window.api.getStore('stats.launches')) as number) || 0
       const playTime = ((await window.api.getStore('stats.playTimeMinutes')) as number) || 0
@@ -133,24 +129,16 @@ export default function App(): React.JSX.Element {
   }
 
   const handleLoginComplete = async (account: LauncherAccount, username: string) => {
-    // 同一ユーザーの既存データからローカル設定フィールドを引き継ぐ
-    const existing = await window.api.getStore('launcherAccount') as LauncherAccount | null
-    const isSameUser = existing?.id === account.id
-
-    const finalAccount: LauncherAccount = {
-      ...account,
-      ...(isSameUser && existing?.linkedMicrosoft ? { linkedMicrosoft: existing.linkedMicrosoft } : {}),
-      ...(isSameUser && existing?.avatar ? { avatar: existing.avatar } : {}),
+    let finalAccount = account
+    if (!finalAccount.linkedMicrosoft) {
+      const mcAuth = await window.api.getStore('mc.auth') as { uuid?: string; name: string; isOffline?: boolean } | null
+      if (mcAuth && !mcAuth.isOffline && mcAuth.name) {
+        finalAccount = { ...finalAccount, linkedMicrosoft: { name: mcAuth.name, uuid: mcAuth.uuid || '' } }
+        await window.api.setStore('launcherAccount', finalAccount)
+      }
     }
-    await window.api.setStore('launcherAccount', finalAccount)
-
-    let finalMcUsername = username
-    const mcAuth = await window.api.getStore('mc.auth') as { name: string } | null
-    if (!finalMcUsername && mcAuth?.name) finalMcUsername = mcAuth.name
-    if (!finalMcUsername && finalAccount.linkedMicrosoft?.name) finalMcUsername = finalAccount.linkedMicrosoft.name
-
     setLauncherAccount(finalAccount)
-    setMcUsername(finalMcUsername)
+    setMcUsername(username)
     setAppState('main')
   }
 

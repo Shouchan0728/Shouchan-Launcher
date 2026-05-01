@@ -18,13 +18,12 @@ interface ServerFile {
 interface DeveloperMenuProps {
   mcUsername: string
   onMcUsernameChange: (username: string) => void
-  onLauncherIconChange?: () => void
 }
 
 const INPUT = 'w-full rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 transition-colors'
 const SELECT = 'w-full rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-sm text-white outline-none focus:border-yellow-500/50 transition-colors'
 
-export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLauncherIconChange }: DeveloperMenuProps): React.JSX.Element {
+export default function DeveloperMenu({ mcUsername, onMcUsernameChange }: DeveloperMenuProps): React.JSX.Element {
   const [tab, setTab] = useState<DevTab>('modpacks')
   const [status, setStatus] = useState<{ msg: string; type: 'idle' | 'ok' | 'error' }>({ msg: '', type: 'idle' })
   const [modpacks, setModpacks] = useState<ServerModpack[]>([])
@@ -263,7 +262,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const handleEditOpen = (mp: ServerModpack) => {
     setEditForm({
       name: mp.name,
-      version: mp.version,
       mcVersion: mp.mcVersion,
       modLoader: mp.modLoader || 'vanilla',
       loaderVersion: mp.loaderVersion || '',
@@ -319,7 +317,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     setLauncherIconLoading(true)
     const res = await window.api.setLauncherIcon(localPath)
     setLauncherIconLoading(false)
-    if (res.success) { ok('ランチャーアイコンを変更しました'); loadLauncherIcon(); onLauncherIconChange?.() }
+    if (res.success) { ok('ランチャーアイコンを変更しました（次回起動時に反映）'); loadLauncherIcon() }
     else err(res.error || 'アイコンの変更に失敗')
   }
 
@@ -331,7 +329,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
       ok('ランチャーアイコンをデフォルトに戻しました')
       setLauncherIconPath(null)
       setLauncherIconPreview('')
-      onLauncherIconChange?.()
     } else err(res.error || 'リセット失敗')
   }
 
@@ -570,18 +567,15 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                   <p className="text-xs text-gray-400 font-semibold">ModPack編集 <span className="text-blue-400 ml-1">— {selectedMp?.name}</span></p>
                   <button onClick={() => setShowEdit(false)} className="text-gray-600 hover:text-gray-400 transition-colors"><X size={13} /></button>
                 </div>
-                <p className="text-[11px] text-gray-600 mb-3">バージョン変更はクライアントの更新チェックに影響します。ファイルは「一括アップロード」時に更新されます。</p>
+                <p className="text-[11px] text-yellow-400/70 mb-3 flex items-center gap-1">
+                  <AlertCircle size={10} />バージョン番号は「一括アップロード」時のみ変更されます
+                </p>
                 <div className="flex flex-col gap-2.5">
                   <div className="grid grid-cols-2 gap-2">
                     <div className="col-span-2">
                       <label className="block text-[11px] text-gray-500 mb-1">名前</label>
                       <input value={editForm.name || ''} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                         className={INPUT} />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] text-gray-500 mb-1">バージョン</label>
-                      <input value={editForm.version || ''} onChange={(e) => setEditForm({ ...editForm, version: e.target.value })}
-                        placeholder="1.0.0" className={INPUT} />
                     </div>
                     <div>
                       <label className="block text-[11px] text-gray-500 mb-1">MCバージョン</label>
@@ -764,22 +758,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                   </div>
                 </div>
 
-                {/* 検索バー */}
-                <div className="flex items-center gap-2 bg-[#0d0d14] rounded-lg border border-white/8 px-3 py-1.5">
-                  <Search size={12} className="text-gray-600 flex-shrink-0" />
-                  <input
-                    value={fileSearch}
-                    onChange={(e) => setFileSearch(e.target.value)}
-                    placeholder="ファイルを検索..."
-                    className="flex-1 bg-transparent text-sm text-white placeholder-gray-600 outline-none"
-                  />
-                  {fileSearch && (
-                    <button onClick={() => setFileSearch('')} className="text-gray-600 hover:text-gray-400 transition-colors flex-shrink-0">
-                      <X size={11} />
-                    </button>
-                  )}
-                </div>
-
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setDownloadTargets(files.map((f) => f.path))}
@@ -830,43 +808,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                       <div className="flex items-center justify-center gap-2 p-10 text-gray-600 text-sm">
                         <Loader2 size={15} className="animate-spin" /> 読み込み中...
                       </div>
-                    ) : fileSearch.trim() ? (
-                      <>
-                        {files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).length === 0 ? (
-                          <div className="flex flex-col items-center justify-center p-10 text-gray-700">
-                            <Search size={24} className="mb-2 opacity-40" />
-                            <p className="text-sm">「{fileSearch}」に一致するファイルはありません</p>
-                          </div>
-                        ) : (
-                          files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).map((f) => {
-                            const name = f.path.split('/').pop() || f.path
-                            const ext = getExt(name)
-                            return (
-                              <div key={f.path} className="grid grid-cols-[1fr_100px_76px_70px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
-                                <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-300 min-w-0" title={f.path}>
-                                  <FileIcon ext={ext} /><span className="truncate text-xs text-gray-400">{f.path}</span>
-                                </div>
-                                <div className="px-3 py-2 text-xs text-gray-600 truncate">{KIND[ext] ?? (ext ? ext.toUpperCase() : 'ファイル')}</div>
-                                <div className="px-3 py-2 text-xs text-gray-500 text-right">{f.size ? fmtSize(f.size) : '—'}</div>
-                                <div className="flex items-center justify-center gap-1">
-                                  <input type="checkbox" checked={downloadTargets.includes(f.path)}
-                                    onChange={() => toggleDownloadTarget(f.path)} className="accent-yellow-500" />
-                                  {confirmDeletePath === f.path ? (
-                                    <div className="flex items-center gap-0.5">
-                                      <button onClick={() => handleDeleteFile(f.path)} className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white">✓</button>
-                                      <button onClick={() => setConfirmDeletePath(null)} className="text-[10px] px-1.5 py-0.5 bg-[#252535] rounded text-gray-400">✗</button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => setConfirmDeletePath(f.path)} className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors">
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                            )
-                          })
-                        )}
-                      </>
                     ) : (
                       <>
                         {currentPath && (
@@ -963,8 +904,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                   <div className="bg-[#1a1a2e] border-t border-white/5 px-4 py-1 flex items-center gap-4">
                     <span className="text-[11px] text-gray-600">{files.length} 件のファイル</span>
                     <span className="text-[11px] text-yellow-500/80">配布対象: {downloadTargets.length} 件</span>
-                    {fileSearch.trim() && <span className="text-[11px] text-blue-400/80">検索: {files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).length} 件表示</span>}
-                    {!fileSearch && currentPath && <span className="text-[11px] text-gray-600">場所: {currentPath}/</span>}
+                    {currentPath && <span className="text-[11px] text-gray-600">場所: {currentPath}/</span>}
                   </div>
                 </div>
               </>
@@ -1027,47 +967,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
               }} className="flex items-center gap-2 rounded-lg bg-yellow-600 hover:bg-yellow-500 px-4 py-2 text-sm font-semibold transition-colors">
                 <Save size={14} />保存
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* ════════ ランチャー ════════ */}
-        {tab === 'launcher' && (
-          <div className="flex flex-col gap-5 max-w-md">
-            <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
-              <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-4 flex items-center gap-1.5">
-                <Monitor size={11} />ランチャーアイコン
-              </p>
-              <div className="flex items-center gap-5 mb-5">
-                <div className="h-20 w-20 rounded-2xl overflow-hidden flex-shrink-0 bg-black/40 border border-white/10 flex items-center justify-center">
-                  {launcherIconPreview
-                    ? <img src={launcherIconPreview} alt="launcher icon" className="h-full w-full object-cover" />
-                    : <ImageIcon size={28} className="text-gray-600" />}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-white mb-1">
-                    {launcherIconPath ? 'カスタムアイコン設定済み' : 'デフォルトアイコン使用中'}
-                  </p>
-                  <p className="text-[11px] text-gray-600">PNG または ICO ファイルを使用できます</p>
-                  {launcherIconPath && (
-                    <p className="text-[10px] text-gray-700 mt-1 break-all">{launcherIconPath}</p>
-                  )}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={handleLauncherIconSelect} disabled={launcherIconLoading}
-                  className="flex items-center gap-2 rounded-lg bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 px-4 py-2 text-sm font-semibold transition-colors">
-                  {launcherIconLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                  アイコンを変更
-                </button>
-                {launcherIconPath && (
-                  <button onClick={handleLauncherIconReset} disabled={launcherIconLoading}
-                    className="flex items-center gap-2 rounded-lg bg-[#252535] hover:bg-[#303045] border border-white/10 disabled:opacity-40 px-4 py-2 text-sm text-gray-300 transition-colors">
-                    <RefreshCw size={14} />デフォルトに戻す
-                  </button>
-                )}
-              </div>
-              <p className="mt-3 text-[11px] text-gray-600">変更は次回起動時またはウィンドウ再起動時に反映されます</p>
             </div>
           </div>
         )}

@@ -396,13 +396,6 @@ const resolveQuiltVersion = async (mcVersion: string): Promise<string | undefine
 }
 
 function createWindow(): void {
-  // カスタムアイコンが保存されていればそれを使用
-  const customIconPath = (() => {
-    const p = store.get('launcher.customIconPath') as string | undefined
-    if (p && fs.existsSync(p)) return p
-    return null
-  })()
-
   const mainWindow = new BrowserWindow({
     width: 1024,
     height: 680,
@@ -417,7 +410,7 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false
     },
-    icon: customIconPath || join(__dirname, '../../resources/icon.png')
+    icon: join(__dirname, '../../resources/icon.png')
   })
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
@@ -1795,110 +1788,6 @@ ipcMain.handle('select-file', async (_e, filters?: Electron.FileFilter[]) => {
 
 ipcMain.handle('get-app-version', () => app.getVersion())
 
-// ── パス / 外部アクセス系 ───────────────────────────────────────────────────
-ipcMain.handle('open-path', async (_e, target: string) => {
-  try {
-    if (!target) return { success: false, error: 'パスが空です' }
-    if (!fs.existsSync(target)) {
-      fs.mkdirSync(target, { recursive: true })
-    }
-    const errMsg = await shell.openPath(target)
-    if (errMsg) return { success: false, error: errMsg }
-    return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
-ipcMain.handle('open-external', async (_e, url: string) => {
-  try {
-    await shell.openExternal(url)
-    return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
-ipcMain.handle('get-recommended-game-dir', () => {
-  // Windows: %APPDATA%\.shouchan, それ以外: ~/.shouchan
-  return path.join(app.getPath('appData'), '.shouchan')
-})
-
-// ── ランチャーアイコンのカスタマイズ ────────────────────────────────────────
-const getCustomIconPath = (): string | null => {
-  const p = store.get('launcher.customIconPath') as string | undefined
-  if (p && fs.existsSync(p)) return p
-  return null
-}
-
-ipcMain.handle('set-launcher-icon', async (_e, sourcePath: string) => {
-  try {
-    if (!sourcePath || !fs.existsSync(sourcePath)) {
-      return { success: false, error: 'ファイルが見つかりません' }
-    }
-    const ext = path.extname(sourcePath).toLowerCase() || '.png'
-    const destDir = path.join(app.getPath('userData'), 'launcher-icon')
-    fs.mkdirSync(destDir, { recursive: true })
-    const dest = path.join(destDir, `icon${ext}`)
-    // 既存ファイルを上書き
-    fs.copyFileSync(sourcePath, dest)
-    store.set('launcher.customIconPath', dest)
-    // 実行中ウィンドウにも反映
-    try {
-      const { nativeImage } = await import('electron')
-      const imgBuffer = fs.readFileSync(dest)
-      const img = nativeImage.createFromBuffer(imgBuffer)
-      if (!img.isEmpty()) {
-        for (const w of BrowserWindow.getAllWindows()) {
-          if (!w.isDestroyed()) w.setIcon(img)
-        }
-      }
-    } catch {}
-    return { success: true, iconPath: dest }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
-ipcMain.handle('reset-launcher-icon', () => {
-  try {
-    store.delete('launcher.customIconPath')
-    return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
-ipcMain.handle('get-launcher-icon', () => {
-  const p = getCustomIconPath()
-  if (!p) return { success: true, iconPath: null }
-  return { success: true, iconPath: p }
-})
-
-// ── ユーザーアバター（画像ファイル → base64） ──────────────────────────────
-ipcMain.handle('read-image-as-data-url', async (_e, filePath: string) => {
-  try {
-    if (!filePath || !fs.existsSync(filePath)) {
-      return { success: false, error: 'ファイルが見つかりません' }
-    }
-    const stat = fs.statSync(filePath)
-    if (stat.size > 2 * 1024 * 1024) {
-      return { success: false, error: '画像サイズは 2MB 以下にしてください' }
-    }
-    const ext = path.extname(filePath).toLowerCase()
-    const mime =
-      ext === '.png' ? 'image/png' :
-      ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
-      ext === '.gif' ? 'image/gif' :
-      ext === '.webp' ? 'image/webp' :
-      'image/png'
-    const data = fs.readFileSync(filePath)
-    return { success: true, dataUrl: `data:${mime};base64,${data.toString('base64')}` }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
 // ── Shouchan アカウント API ────────────────────────────────────────────────
 const formatAccountApiError = (err: unknown, fallback: string): string => {
   if (axios.isAxiosError(err)) {
@@ -1939,8 +1828,7 @@ ipcMain.handle('account-register-verify', async (_e, { pendingToken, code }: { p
       email: (res.data.email as string) || fallbackEmail,
       role: (res.data.role as 'developer' | 'player') || 'player',
       createdAt: (res.data.createdAt as string) || new Date().toISOString(),
-      token: res.data.token,
-      ...(res.data.avatar ? { avatar: res.data.avatar as string } : {})
+      token: res.data.token
     }
     store.set('launcherAccount', account)
     store.delete('auth.pendingRegisterEmail')
@@ -1971,8 +1859,7 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
       email: (res.data.email as string) || fallbackEmail,
       role: (res.data.role as 'developer' | 'player') || 'player',
       createdAt: res.data.createdAt,
-      token: res.data.token,
-      ...(res.data.avatar ? { avatar: res.data.avatar as string } : {})
+      token: res.data.token
     }
     store.set('launcherAccount', account)
     store.delete('auth.pendingLoginEmail')
@@ -2026,20 +1913,6 @@ ipcMain.handle('account-sync-settings', async () => {
   }
 })
 
-ipcMain.handle('account-avatar-sync', async (_e, avatar: string | null) => {
-  try {
-    const account = store.get('launcherAccount') as { token?: string } | null
-    if (!account?.token) return { success: false, error: 'Not logged in' }
-    await axios.post(`${MODPACK_SERVER_URL}/account/avatar`, { avatar: avatar ?? null }, {
-      headers: { Authorization: `Bearer ${account.token}` },
-      timeout: 15000
-    })
-    return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
 ipcMain.handle('account-verify-token', async () => {
   try {
     const account = store.get('launcherAccount') as { token?: string; role?: string } | null
@@ -2074,15 +1947,16 @@ ipcMain.handle('fetch-modpack-list', async () => {
 ipcMain.handle('check-modpack-update-by-id', async (_e, id: string) => {
   const localVersion = (store.get(`modpack.versions.${id}`, '') as string) || ''
   try {
-    // modpacks.json のバージョンと比較（開発者が編集フォームで変更したらユーザーに更新を求める）
     const infoRes = await axios.get(modpackInfoUrl(id), { timeout: 10000 })
     const serverVersion: string = infoRes.data.version || ''
     if (serverVersion === localVersion) return { hasUpdate: false, serverVersion, localVersion }
+
     try {
       await axios.get(modpackFilesUrl(id), { timeout: 8000 })
     } catch {
       return { hasUpdate: false, serverVersion, localVersion }
     }
+
     return { hasUpdate: true, serverVersion, localVersion }
   } catch {
     return { hasUpdate: false, serverVersion: null, localVersion }
@@ -2102,13 +1976,6 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       const relativePath = normalizePath(file.path)
       const filePath = path.join(modpackDir, relativePath)
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
-      // 隠しディレクトリ内のファイル（Packwiz .index/ など）はスキップ
-      if (relativePath.split('/').some(part => part.startsWith('.'))) {
-        completed++
-        event.sender.send('modpack-progress', { completed, total: files.length, file: relativePath })
-        continue
-      }
-
       try {
         const fileRes = await axios.get(resolveManifestUrl(id, file), { responseType: 'arraybuffer', timeout: 120000 })
         fs.writeFileSync(filePath, Buffer.from(fileRes.data))
@@ -2124,13 +1991,7 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       event.sender.send('modpack-progress', { completed, total: files.length, file: relativePath })
     }
 
-    // modpacks.json のバージョンを保存（次回の更新チェックと一致させる）
-    try {
-      const infoRes = await axios.get(modpackInfoUrl(id), { timeout: 10000 })
-      store.set(`modpack.versions.${id}`, infoRes.data.version || (res.headers['x-modpack-version'] as string) || 'unknown')
-    } catch {
-      store.set(`modpack.versions.${id}`, (res.headers['x-modpack-version'] as string) || 'unknown')
-    }
+    store.set(`modpack.versions.${id}`, res.headers['x-modpack-version'] || 'unknown')
     return { success: true }
   } catch (err: unknown) {
     const status = (err as { response?: { status?: number } }).response?.status
@@ -2182,23 +2043,6 @@ ipcMain.handle('dev-update-modpack', async (_e, id: string, info: unknown) => {
   }
 })
 
-ipcMain.handle('dev-upload-modpack-icon', async (_e, id: string, localPath: string) => {
-  try {
-    const form = new FormData()
-    form.append('path', 'icon.png')
-    form.append('modpackId', id)
-    form.append('file', fs.createReadStream(localPath))
-    await axios.post(`${MODPACK_SERVER_URL}/admin/modpacks/${id}/upload`, form, {
-      headers: { ...form.getHeaders(), ...devHeaders() },
-      timeout: 30000
-    })
-    const iconUrl = modpackFileDownloadUrl(id, 'icon.png')
-    return { success: true, iconUrl }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
 ipcMain.handle('dev-delete-modpack', async (_e, id: string) => {
   try {
     await axios.delete(`${MODPACK_SERVER_URL}/admin/modpacks/${id}`, {
@@ -2216,7 +2060,6 @@ ipcMain.handle('dev-upload-modpack-dir-by-id', async (event, id: string, localDi
     const files: Array<{ localPath: string; relativePath: string }> = []
     function scanDir(dir: string, base: string = '') {
       for (const entry of fs.readdirSync(dir)) {
-        if (entry.startsWith('.')) continue // 隠しファイル・ディレクトリ（.index/等）はスキップ
         const full = path.join(dir, entry)
         const rel = base ? `${base}/${entry}` : entry
         if (fs.statSync(full).isDirectory()) scanDir(full, rel)
