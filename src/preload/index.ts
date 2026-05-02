@@ -75,6 +75,7 @@ const api = {
   // 汎用パス操作 / 外部リンク
   openPath: (target: string) => ipcRenderer.invoke('open-path', target),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
+  saveLogFile: (content: string) => ipcRenderer.invoke('save-log-file', content),
   getRecommendedGameDir: () => ipcRenderer.invoke('get-recommended-game-dir'),
 
   // 多重起動チェック

@@ -170,6 +170,7 @@ declare global {
 
       openPath: (target: string) => Promise<{ success: boolean; error?: string }>
       openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
+      saveLogFile: (content: string) => Promise<{ success: boolean; error?: string }>
       getRecommendedGameDir: () => Promise<string>
 
       isLaunchingMinecraft: () => Promise<boolean>
