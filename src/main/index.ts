@@ -1824,6 +1824,21 @@ ipcMain.handle('get-recommended-game-dir', () => {
   return path.join(app.getPath('appData'), '.shouchan')
 })
 
+ipcMain.handle('save-log-file', async (_e, content: string) => {
+  try {
+    const { filePath, canceled } = await dialog.showSaveDialog({
+      title: 'ログを保存',
+      defaultPath: `game-log-${new Date().toISOString().slice(0, 10)}.txt`,
+      filters: [{ name: 'テキストファイル', extensions: ['txt'] }]
+    })
+    if (canceled || !filePath) return { success: false }
+    fs.writeFileSync(filePath, content, 'utf-8')
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
 // ── ランチャーアイコンのカスタマイズ ────────────────────────────────────────
 const getCustomIconPath = (): string | null => {
   const p = store.get('launcher.customIconPath') as string | undefined
