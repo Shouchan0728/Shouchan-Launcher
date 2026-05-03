@@ -116,8 +116,8 @@ const api = {
     ipcRenderer.on('launch-log', (_e, log) => callback(log))
     return () => ipcRenderer.removeAllListeners('launch-log')
   },
-  onGameClosed: (callback: (code: number) => void) => {
-    ipcRenderer.on('game-closed', (_e, code) => callback(code))
+  onGameClosed: (callback: (data: { code: number; addedMinutes: number }) => void) => {
+    ipcRenderer.on('game-closed', (_e, data) => callback(data))
     return () => ipcRenderer.removeAllListeners('game-closed')
   },
   onJavaDownloadProgress: (callback: (data: { completed: number; total: number }) => void) => {

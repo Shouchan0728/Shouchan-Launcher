@@ -13,7 +13,8 @@ import {
   Zap,
   Package,
   User,
-  FolderOpen
+  FolderOpen,
+  Info
 } from 'lucide-react'
 import { LauncherAccount, Stats, NewsItem, LaunchStatus, ServerModpack } from '../types'
 
@@ -83,6 +84,7 @@ export default function HomeView({
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [serverVersion, setServerVersion] = useState<string | null>(null)
   const [showModpackModal, setShowModpackModal] = useState(false)
+  const [showSlowStartNotice, setShowSlowStartNotice] = useState(false)
 
   const selectedModpack = modpackList.find((m) => m.id === selectedModpackId) || modpackList[0]
 
@@ -90,6 +92,9 @@ export default function HomeView({
     const init = async () => {
       const storedId = (await window.api.getStore('selectedModpackId')) as string || 'default'
       setSelectedModpackId(storedId)
+
+      const slowWarning = (await window.api.getStore('flags.slowStartWarning')) as boolean | undefined
+      if (slowWarning) setShowSlowStartNotice(true)
 
       const [serverResult, newsResult, listResult] = await Promise.allSettled([
         window.api.checkServerStatus(SERVER_URL),
@@ -153,6 +158,8 @@ export default function HomeView({
       setUpdateAvailable(false)
       setStatusMessage('ModPackの更新が完了しました')
       setLaunchStatus('idle')
+      setShowSlowStartNotice(true)
+      await window.api.setStore('flags.slowStartWarning', true)
     } else {
       setStatusMessage(`更新エラー: ${result.error}`)
       setLaunchStatus('error')
@@ -197,6 +204,9 @@ export default function HomeView({
       onStatsUpdate({ launches: newLaunches, lastLaunch: new Date().toISOString() })
       await window.api.setStore('stats.launches', newLaunches)
       await window.api.setStore('stats.lastLaunch', new Date().toISOString())
+      // 起動成功したら初回起動警告をクリア
+      setShowSlowStartNotice(false)
+      await window.api.deleteStore('flags.slowStartWarning')
     } else {
       setLaunchStatus('error')
       setStatusMessage(`起動エラー: ${result.error}`)
@@ -285,6 +295,26 @@ export default function HomeView({
               <span className="text-sm font-semibold text-amber-300">ModPackの更新があります</span>
               <span className="text-xs text-amber-400/70 ml-2">v{serverVersion}</span>
             </div>
+          </div>
+        )}
+
+        {/* Slow start notice (shown after launcher or modpack update) */}
+        {showSlowStartNotice && !updateAvailable && (
+          <div className="flex items-start gap-3 rounded-xl bg-blue-500/10 border border-blue-500/30 px-4 py-3">
+            <Info size={16} className="text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-blue-300">初回起動は時間がかかる場合があります</p>
+              <p className="text-xs text-blue-400/70 mt-0.5">アップデート後の初回起動ではMinecraftのセットアップが行われるため、起動に数分かかることがあります。そのままお待ちください。</p>
+            </div>
+            <button
+              onClick={async () => {
+                setShowSlowStartNotice(false)
+                await window.api.deleteStore('flags.slowStartWarning')
+              }}
+              className="flex-shrink-0 text-blue-500/60 hover:text-blue-400 transition-colors"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
 

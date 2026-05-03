@@ -189,7 +189,7 @@ declare global {
       onModpackProgress: (cb: (data: { completed: number; total: number; file: string }) => void) => () => void
       onLaunchProgress: (cb: (data: unknown) => void) => () => void
       onLaunchLog: (cb: (log: string) => void) => () => void
-      onGameClosed: (cb: (code: number) => void) => () => void
+      onGameClosed: (cb: (data: { code: number; addedMinutes: number }) => void) => () => void
       onJavaDownloadProgress: (cb: (data: { completed: number; total: number }) => void) => () => void
     }
   }

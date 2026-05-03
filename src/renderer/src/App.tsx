@@ -95,8 +95,15 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    const cleanup = window.api.onGameClosed((code) => {
+    const cleanup = window.api.onGameClosed(({ addedMinutes }) => {
       setLaunchStatus('idle')
+      if (addedMinutes > 0) {
+        setStats((prev) => {
+          const newTotal = prev.playTimeMinutes + addedMinutes
+          window.api.setStore('stats.playTimeMinutes', newTotal)
+          return { ...prev, playTimeMinutes: newTotal }
+        })
+      }
     })
     return cleanup
   }, [])
