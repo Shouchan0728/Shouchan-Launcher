@@ -1,5 +1,8 @@
 node_modules/
 out/
 dist/
+.history/
+.vs/
 .DS_Store
 *.log
+*.md
