@@ -25,6 +25,8 @@ if (!gotTheLock) {
 
 // 起動中フラグ（ランチャー内での多重起動を防ぐ）
 let isLaunchingMinecraft = false
+// ゲーム起動確認時刻（プレイ時間計算用）
+let gameStartTime: Date | null = null
 
 const MODPACK_SERVER_URL = 'https://mc-shouchan.jp/api'
 // ↓ 配布前に変更してください。このコードを知っている人だけ開発者になれます。
@@ -446,6 +448,15 @@ function createWindow(): void {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('net.shouchan.launcher')
   app.on('browser-window-created', (_, window) => optimizer.watchWindowShortcuts(window))
+
+  // ランチャーバージョンが変わっていたら初回起動警告フラグをセット
+  const currentVersion = app.getVersion()
+  const lastKnownVersion = (store.get('lastKnownVersion', '') as string) || ''
+  if (lastKnownVersion && lastKnownVersion !== currentVersion) {
+    store.set('flags.slowStartWarning', true)
+  }
+  store.set('lastKnownVersion', currentVersion)
+
   createWindow()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -1688,6 +1699,7 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
         event.sender.send('launch-log', str)
         if (!resolved && (str.includes('Setting user:') || str.includes('Backend library'))) {
           resolved = true
+          gameStartTime = new Date()
           clearTimeout(timeout)
           resolve()
         }
@@ -1711,7 +1723,20 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           reject(new Error(`Minecraft exited with code ${code}`))
         }
         isLaunchingMinecraft = false
-        event.sender.send('game-closed', code ?? 0)
+
+        // プレイ時間を計算して保存
+        let addedMinutes = 0
+        if (gameStartTime) {
+          const elapsedMs = Date.now() - gameStartTime.getTime()
+          addedMinutes = Math.floor(elapsedMs / 60000)
+          if (addedMinutes > 0) {
+            const prev = (store.get('stats.playTimeMinutes', 0) as number) || 0
+            store.set('stats.playTimeMinutes', prev + addedMinutes)
+          }
+          gameStartTime = null
+        }
+
+        event.sender.send('game-closed', { code: code ?? 0, addedMinutes })
         if (options.closeOnLaunch) app.quit()
       })
 
