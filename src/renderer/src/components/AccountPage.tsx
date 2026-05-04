@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import {
   User, Mail, Shield, Calendar, Camera, Trash2, CheckCircle, Loader2,
-  Link as LinkIcon, Unlink, AlertCircle, Gamepad2
+  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus
 } from 'lucide-react'
 import { LauncherAccount } from '../types'
 
@@ -21,6 +21,8 @@ export default function AccountPage({
   const [status, setStatus] = useState<{ msg: string; type: 'ok' | 'error' | 'idle' }>({ msg: '', type: 'idle' })
   const [avatarLoading, setAvatarLoading] = useState(false)
   const [linkLoading, setLinkLoading] = useState(false)
+  const [mcidInput, setMcidInput] = useState('')
+  const [wlLoading, setWlLoading] = useState(false)
 
   const ok = (msg: string) => { setStatus({ msg, type: 'ok' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 3000) }
   const err = (msg: string) => { setStatus({ msg, type: 'error' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 4000) }
@@ -62,6 +64,21 @@ export default function AccountPage({
       ok(`${res.mcUsername} と紐付けました`)
     } else {
       err(res.error || 'Microsoft認証に失敗しました')
+    }
+  }
+
+  const handleRegisterWhitelist = async () => {
+    const mcid = mcidInput.trim()
+    if (!mcid) return
+    setWlLoading(true)
+    const res = await window.api.linkMinecraftManual(mcid)
+    setWlLoading(false)
+    if (res.ok) {
+      onAccountChange({ ...account, mc_name: mcid })
+      setMcidInput('')
+      ok(`${mcid} をホワイトリストに登録しました`)
+    } else {
+      err(res.error || 'ホワイトリスト登録に失敗しました')
     }
   }
 
@@ -204,6 +221,48 @@ export default function AccountPage({
                   </>
                 )}
               </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── ホワイトリスト登録 ── */}
+        <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
+          <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
+            <ListPlus size={14} />
+            ホワイトリスト登録
+          </h3>
+          {account.mc_name ? (
+            <div className="flex items-center gap-3 bg-[#0d0d14] border border-green-500/20 rounded-lg p-3">
+              <Gamepad2 size={16} className="text-green-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{account.mc_name}</p>
+                <p className="text-xs text-gray-500">ホワイトリスト登録済み</p>
+              </div>
+              <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">
+                MinecraftのユーザーID（MCID）を入力してホワイトリストに登録してください。
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={mcidInput}
+                  onChange={e => setMcidInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleRegisterWhitelist()}
+                  placeholder="MinecraftID（例: Steve）"
+                  maxLength={16}
+                  className="flex-1 bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+                <button
+                  onClick={handleRegisterWhitelist}
+                  disabled={wlLoading || !mcidInput.trim()}
+                  className="flex items-center gap-2 rounded-lg bg-green-700 hover:bg-green-600 disabled:opacity-50 px-4 py-2 text-sm font-semibold transition-colors whitespace-nowrap"
+                >
+                  {wlLoading ? <Loader2 size={13} className="animate-spin" /> : '登録'}
+                </button>
+              </div>
             </div>
           )}
         </div>

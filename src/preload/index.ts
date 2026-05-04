@@ -42,6 +42,9 @@ const api = {
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),
   accountAvatarSync: (avatar: string | null) => ipcRenderer.invoke('account-avatar-sync', avatar),
 
+  linkMinecraftManual: (mcid: string) => ipcRenderer.invoke('link-minecraft-manual', mcid),
+  linkDiscord: () => ipcRenderer.invoke('link-discord'),
+
   fetchModpackList: () => ipcRenderer.invoke('fetch-modpack-list'),
   fetchModpackLaunchInfo: (id: string) => ipcRenderer.invoke('fetch-modpack-launch-info', id),
   checkModpackUpdateById: (id: string) => ipcRenderer.invoke('check-modpack-update-by-id', id),

@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Upload, Trash2, RefreshCw, Plus, Save, Package, Newspaper,
+  Upload, Trash2, RefreshCw, Plus, Save, Package,
   AlertCircle, CheckCircle, FileText, FolderOpen, Folder, Zap,
   Loader2, Gamepad2, User, LogIn, ChevronRight, File, ArrowUp, X,
   Edit2, ImageIcon, Search, Monitor
 } from 'lucide-react'
-import { NewsItem, ServerModpack, ModLoader } from '../types'
+import { ServerModpack, ModLoader } from '../types'
 
-type DevTab = 'modpacks' | 'files' | 'news' | 'mc-auth' | 'launcher'
+type DevTab = 'modpacks' | 'files' | 'mc-auth' | 'launcher'
 
 interface ServerFile {
   path: string
@@ -55,9 +55,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<string | null>(null)
   const [downloadTargets, setDownloadTargets] = useState<string[]>([])
   const [savingDownloadTargets, setSavingDownloadTargets] = useState(false)
-
-  // ── ニュース ─────────────────────────────────────────────────────────────────
-  const [news, setNews] = useState<NewsItem[]>([])
 
   // ── MCアカウント ──────────────────────────────────────────────────────────────
   const [msAuthLoading, setMsAuthLoading] = useState(false)
@@ -138,17 +135,9 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     else err(res.error || '配布対象の読み込みに失敗')
   }
 
-  const loadNews = async () => {
-    const res = await window.api.devGetNews()
-    if (res.success && res.data) { setNews(res.data); return }
-    const fallback = await window.api.fetchNews()
-    if (fallback.success && fallback.data) setNews(fallback.data)
-  }
-
   useEffect(() => {
     if (tab === 'modpacks') loadModpacks()
     if (tab === 'files' && modpacks.length === 0) loadModpacks()
-    if (tab === 'news') loadNews()
     if (tab === 'launcher') loadLauncherIcon()
   }, [tab])
 
@@ -394,7 +383,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const TABS: { id: DevTab; label: string }[] = [
     { id: 'modpacks', label: 'ModPack管理' },
     { id: 'files', label: 'ファイル管理' },
-    { id: 'news', label: 'ニュース' },
     { id: 'mc-auth', label: 'MCアカウント' },
     { id: 'launcher', label: 'ランチャー' }
   ]
@@ -969,65 +957,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                 </div>
               </>
             )}
-          </div>
-        )}
-
-        {/* ════════ ニュース ════════ */}
-        {tab === 'news' && (
-          <div className="flex flex-col gap-4 max-w-2xl">
-            {news.map((item) => (
-              <div key={item.id} className="rounded-xl bg-[#1a1a2e] border border-white/5 p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <input value={item.title}
-                    onChange={(e) => setNews((prev) => prev.map((n) => n.id === item.id ? { ...n, title: e.target.value } : n))}
-                    placeholder="タイトル"
-                    className="flex-1 rounded-lg bg-[#111117] border border-white/10 px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 mr-2" />
-                  <button onClick={() => setNews((prev) => prev.filter((n) => n.id !== item.id))}
-                    className="text-red-500/60 hover:text-red-400 transition-colors flex-shrink-0">
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-                <textarea value={item.content} rows={3}
-                  onChange={(e) => setNews((prev) => prev.map((n) => n.id === item.id ? { ...n, content: e.target.value } : n))}
-                  placeholder="内容..."
-                  className="w-full rounded-lg bg-[#111117] border border-white/10 px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 resize-none" />
-                <input
-                  type="datetime-local"
-                  value={(() => {
-                    // ISO(UTC)文字列をローカルタイム文字列(YYYY-MM-DDTHH:mm)に変換
-                    if (!item.date) return ''
-                    const d = new Date(item.date)
-                    if (isNaN(d.getTime())) return ''
-                    const pad = (n: number) => String(n).padStart(2, '0')
-                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-                  })()}
-                  onChange={(e) => {
-                    // input値はローカル時刻として解釈 → ISO(UTC)に変換して保存
-                    const v = e.target.value
-                    if (!v) {
-                      setNews((prev) => prev.map((n) => n.id === item.id ? { ...n, date: '' } : n))
-                      return
-                    }
-                    const d = new Date(v) // ローカルタイムで解釈される
-                    if (isNaN(d.getTime())) return
-                    setNews((prev) => prev.map((n) => n.id === item.id ? { ...n, date: d.toISOString() } : n))
-                  }}
-                  className="mt-2 rounded-lg bg-[#111117] border border-white/10 px-3 py-1.5 text-xs text-gray-400 outline-none focus:border-yellow-500/50" />
-              </div>
-            ))}
-            <div className="flex gap-2">
-              <button onClick={() => setNews((prev) => [...prev, { id: Date.now(), title: '', content: '', date: new Date().toISOString() }])}
-                className="flex items-center gap-2 rounded-lg bg-[#1a1a2e] border border-white/10 px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors">
-                <Plus size={14} />追加
-              </button>
-              <button onClick={async () => {
-                const res = await window.api.devUpdateNews(news)
-                if (res.success) ok('ニュースを保存しました')
-                else err(res.error || '保存失敗')
-              }} className="flex items-center gap-2 rounded-lg bg-yellow-600 hover:bg-yellow-500 px-4 py-2 text-sm font-semibold transition-colors">
-                <Save size={14} />保存
-              </button>
-            </div>
           </div>
         )}
 
