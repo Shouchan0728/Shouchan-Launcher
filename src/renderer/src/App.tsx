@@ -259,6 +259,7 @@ export default function App(): React.JSX.Element {
               onStatsUpdate={handleStatsUpdate}
               launchStatus={launchStatus}
               setLaunchStatus={setLaunchStatus}
+              onNavigateAccount={() => setView('account')}
             />
           )}
           {view === 'settings' && <SettingsView />}

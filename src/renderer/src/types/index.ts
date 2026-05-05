@@ -7,10 +7,14 @@ export interface LauncherAccount {
   token?: string
   avatar?: string // data URL（ユーザーアイコン、ローカル保存）
   linkedMicrosoft?: { name: string; uuid: string } // Shouchanアカウントに紐付けたMicrosoftアカウント
-  mc_name?: string // ホワイトリスト登録済みMCID
-  mc_uuid?: string
   discord_id?: string
   discord_name?: string
+}
+
+export interface WhitelistStatus {
+  registered: boolean
+  mcid?: string
+  mc_uuid?: string
 }
 
 export interface AccountOtpStartResult {
@@ -69,6 +73,7 @@ export interface AppSettings {
   javaPath: string
   jvmArgs: string
   closeOnLaunch: boolean
+  closeOnExit: boolean
 }
 
 export type ModLoader = 'vanilla' | 'forge' | 'neoforge' | 'fabric' | 'quilt'
@@ -108,6 +113,7 @@ export interface LaunchMinecraftOptions {
   javaPath?: string
   jvmArgs?: string[]
   closeOnLaunch?: boolean
+  closeOnExit?: boolean
   modpackId?: string
 }
 
@@ -185,6 +191,8 @@ declare global {
 
       linkMinecraftManual: (mcid: string) => Promise<{ ok: boolean; error?: string }>
       linkDiscord: () => Promise<{ success: boolean; error?: string }>
+      fetchWhitelistStatus: () => Promise<{ ok: boolean; registered: boolean; mcid?: string; mc_uuid?: string; error?: string }>
+      updateLauncherUsername: (username: string) => Promise<{ ok: boolean; username?: string; error?: string }>
 
       // アップデート機能
       checkForUpdates: () => Promise<{ success: boolean; error?: string }>

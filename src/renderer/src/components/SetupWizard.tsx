@@ -41,7 +41,7 @@ const INPUT = 'w-full rounded-lg bg-[#1a1a2e] border border-white/10 px-3 py-2.5
 
 export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX.Element {
   const [step, setStep] = useState(0)
-  const [accountMode, setAccountMode] = useState<'register' | 'login'>('register')
+  const [accountMode, setAccountMode] = useState<'register' | 'login'>('login')
   const [accountPhase, setAccountPhase] = useState<'credentials' | 'code'>('credentials')
   const [pendingToken, setPendingToken] = useState('')
   const [verificationCode, setVerificationCode] = useState('')
@@ -120,12 +120,34 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
     }
 
     if (accountMode === 'login') {
-      update({ resolvedAccount: verifyRes.account, launcherUsername: verifyRes.account.username })
+      // ログイン時はサーバー側に保存されている設定をローカルから読み戻して反映
+      const [gameDir, javaPath, maxMemory, minMemory, closeOnLaunch] = await Promise.all([
+        window.api.getStore('settings.gameDir'),
+        window.api.getStore('settings.javaPath'),
+        window.api.getStore('settings.maxMemory'),
+        window.api.getStore('settings.minMemory'),
+        window.api.getStore('settings.closeOnLaunch'),
+      ])
+      update({
+        resolvedAccount: verifyRes.account,
+        launcherUsername: verifyRes.account.username,
+        gameDir: typeof gameDir === 'string' ? gameDir : '',
+        javaPath: typeof javaPath === 'string' ? javaPath : '',
+        maxMemory: typeof maxMemory === 'string' ? maxMemory : '4G',
+        minMemory: typeof minMemory === 'string' ? minMemory : '2G',
+        closeOnLaunch: typeof closeOnLaunch === 'boolean' ? closeOnLaunch : false,
+      })
     } else {
       update({ resolvedAccount: verifyRes.account })
     }
     resetAccountVerification()
     setStep(1)
+  }
+
+  // ログイン経由かつサーバー側の設定が揃っているなら、Step1完了後に残りをスキップする
+  const canSkipConfigSteps = (): boolean => {
+    if (accountMode !== 'login') return false
+    return Boolean(data.gameDir && data.maxMemory && data.minMemory)
   }
 
   const handleMicrosoftLogin = async () => {
@@ -226,9 +248,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
                 <p className="text-sm text-gray-500 mt-1">このランチャー専用のアカウントです</p>
               </div>
 
-              {/* Register / Login toggle */}
+              {/* Login / Register toggle */}
               <div className="flex rounded-lg bg-[#1a1a2e] p-1 gap-1">
-                {(['register', 'login'] as const).map((mode) => (
+                {(['login', 'register'] as const).map((mode) => (
                   <button
                     key={mode}
                     onClick={() => {
@@ -238,7 +260,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
                     }}
                     className={`flex-1 py-1.5 rounded-md text-sm font-medium transition-colors ${accountMode === mode ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
                   >
-                    {mode === 'register' ? '新規登録' : 'ログイン'}
+                    {mode === 'login' ? 'ログイン' : '新規登録'}
                   </button>
                 ))}
               </div>
@@ -496,6 +518,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
             onClick={() => {
               if (step === 0) { handleStep0Next(); return }
               if (step === 1 && !isDev && authStatus !== 'done') return
+              if (step === 1 && canSkipConfigSteps()) { setStep(5); return }
               setStep((s) => s + 1)
             }}
             disabled={
@@ -508,7 +531,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
               ? <><Loader2 size={14} className="animate-spin" />処理中...</>
               : step === 0
                 ? <>{accountPhase === 'credentials' ? '確認コードを送信' : '確認して次へ'} <ChevronRight size={16} /></>
-                : <>次へ <ChevronRight size={16} /></>}
+                : step === 1 && canSkipConfigSteps()
+                  ? <>設定を引き継いで完了へ <ChevronRight size={16} /></>
+                  : <>次へ <ChevronRight size={16} /></>}
           </button>
         ) : (
           <button onClick={handleComplete}

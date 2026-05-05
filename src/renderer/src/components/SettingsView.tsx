@@ -8,6 +8,7 @@ export default function SettingsView(): React.JSX.Element {
   const [javaPath, setJavaPath] = useState('')
   const [jvmArgs, setJvmArgs] = useState('')
   const [closeOnLaunch, setCloseOnLaunch] = useState(false)
+  const [closeOnExit, setCloseOnExit] = useState(false)
   const [saved, setSaved] = useState(false)
   const [cacheCleared, setCacheCleared] = useState(false)
   const [clearingCache, setClearingCache] = useState(false)

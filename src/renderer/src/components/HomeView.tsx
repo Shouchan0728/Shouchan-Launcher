@@ -14,7 +14,8 @@ import {
   Package,
   User,
   FolderOpen,
-  Info
+  Info,
+  ListPlus
 } from 'lucide-react'
 import { LauncherAccount, Stats, NewsItem, LaunchStatus, ServerModpack } from '../types'
 
@@ -64,6 +65,7 @@ interface HomeViewProps {
   onStatsUpdate: (stats: Partial<Stats>) => void
   launchStatus: LaunchStatus
   setLaunchStatus: (status: LaunchStatus) => void
+  onNavigateAccount: () => void
 }
 
 export default function HomeView({
@@ -73,7 +75,8 @@ export default function HomeView({
   onLogout,
   onStatsUpdate,
   launchStatus,
-  setLaunchStatus
+  setLaunchStatus,
+  onNavigateAccount
 }: HomeViewProps): React.JSX.Element {
   const [serverOnline, setServerOnline] = useState<boolean | null>(null)
   const [modpackList, setModpackList] = useState<ServerModpack[]>([])
@@ -85,6 +88,7 @@ export default function HomeView({
   const [serverVersion, setServerVersion] = useState<string | null>(null)
   const [showModpackModal, setShowModpackModal] = useState(false)
   const [showSlowStartNotice, setShowSlowStartNotice] = useState(false)
+  const [whitelistRegistered, setWhitelistRegistered] = useState<boolean | null>(null)
 
   const selectedModpack = modpackList.find((m) => m.id === selectedModpackId) || modpackList[0]
 
@@ -122,6 +126,17 @@ export default function HomeView({
     })
     return () => { cleanup() }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchStatus = async () => {
+      const res = await window.api.fetchWhitelistStatus()
+      if (cancelled) return
+      if (res.ok) setWhitelistRegistered(res.registered)
+    }
+    fetchStatus()
+    return () => { cancelled = true }
+  }, [launcherAccount?.id, launcherAccount?.email])
 
   const getInstanceDir = async (modpack: ServerModpack) => {
     const gameDir = ((await window.api.getStore('settings.gameDir')) as string || '').trim()
@@ -242,7 +257,7 @@ export default function HomeView({
           )}
           <div>
             <p className="text-sm font-semibold leading-tight">
-              ようこそ、{launcherAccount?.username || mcUsername}さん
+              ようこそ、{launcherAccount?.discord_name || launcherAccount?.username || mcUsername}さん
             </p>
             {launcherAccount?.role === 'developer' && (
               <span className="text-[10px] bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 px-1.5 rounded leading-tight">DEV</span>
@@ -286,6 +301,24 @@ export default function HomeView({
 
       {/* ── Main scrollable content ── */}
       <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
+
+        {/* Whitelist application banner */}
+        {whitelistRegistered === false && (
+          <div className="flex items-center gap-3 rounded-xl bg-orange-500/10 border border-orange-500/30 px-4 py-3">
+            <ListPlus size={16} className="text-orange-400 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-300">ホワイトリストが未登録です</p>
+              <p className="text-xs text-orange-400/70 mt-0.5">サーバーに参加するにはMCIDをホワイトリストに登録してください。</p>
+            </div>
+            <button
+              onClick={onNavigateAccount}
+              className="flex-shrink-0 flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-orange-500/20 border border-orange-500/40 text-orange-300 hover:bg-orange-500/30 transition-colors"
+            >
+              <ListPlus size={12} />
+              ホワイトリスト申請
+            </button>
+          </div>
+        )}
 
         {/* Update alert */}
         {updateAvailable && (
