@@ -1795,24 +1795,33 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
         }
       }, TIMEOUT_MS)
 
+      // 破棄済み webContents への送信で例外が出ないようガード
+      const safeSend = (channel: string, payload: unknown): void => {
+        try {
+          if (!event.sender.isDestroyed()) event.sender.send(channel, payload)
+        } catch {
+          // すでにウィンドウが閉じられている場合は無視
+        }
+      }
+
       mc.stdout.on('data', (data: Buffer) => {
         const str = data.toString()
-        event.sender.send('launch-log', str)
+        safeSend('launch-log', str)
         if (!resolved && (str.includes('Setting user:') || str.includes('Backend library'))) {
           resolved = true
           gameStartTime = new Date()
           clearTimeout(timeout)
           resolve()
-          // 起動成功後にランチャーを閉じる設定
+          // 起動成功後にランチャーを最小化
           if (options.closeOnLaunch) {
-            // IPC返信と統計保存が完了してから終了させるため少し遅延
-            setTimeout(() => app.quit(), 500)
+            const win = BrowserWindow.fromWebContents(event.sender)
+            if (win && !win.isDestroyed()) win.minimize()
           }
         }
       })
 
       mc.stderr.on('data', (data: Buffer) => {
-        event.sender.send('launch-log', `[STDERR] ${data.toString()}`)
+        safeSend('launch-log', `[STDERR] ${data.toString()}`)
       })
 
       mc.on('error', (err) => {
@@ -1820,7 +1829,7 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           clearTimeout(timeout)
           reject(err)
         }
-        event.sender.send('launch-log', `[Launcher] プロセスエラー: ${err.message}`)
+        safeSend('launch-log', `[Launcher] プロセスエラー: ${err.message}`)
       })
 
       mc.on('close', (code) => {
@@ -1842,12 +1851,15 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           gameStartTime = null
         }
 
-        event.sender.send('game-closed', { code: code ?? 0, addedMinutes })
-        // ゲーム終了後にランチャーを閉じる設定
-        if (options.closeOnExit) app.quit()
+        safeSend('game-closed', { code: code ?? 0, addedMinutes })
+        // ゲーム終了後にランチャーを終了
+        if (options.closeOnExit) {
+          // IPC送信完了を待ってから終了
+          setTimeout(() => app.quit(), 300)
+        }
       })
 
-      event.sender.send('launch-log', `[Launcher] Javaプロセス開始: PID=${mc.pid}`)
+      safeSend('launch-log', `[Launcher] Javaプロセス開始: PID=${mc.pid}`)
     })
 
     store.set('stats.launches', ((store.get('stats.launches', 0) as number) + 1))
