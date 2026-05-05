@@ -7,6 +7,10 @@ export interface LauncherAccount {
   token?: string
   avatar?: string // data URL（ユーザーアイコン、ローカル保存）
   linkedMicrosoft?: { name: string; uuid: string } // Shouchanアカウントに紐付けたMicrosoftアカウント
+  mc_name?: string // ホワイトリスト登録済みMCID
+  mc_uuid?: string
+  discord_id?: string
+  discord_name?: string
 }
 
 export interface AccountOtpStartResult {
@@ -163,8 +167,6 @@ declare global {
       devDeleteFile: (modpackId: string, serverPath: string) => Promise<{ success: boolean; error?: string }>
       devGetModpackDownloadTargets: (modpackId: string) => Promise<{ success: boolean; data?: string[]; error?: string }>
       devSaveModpackDownloadTargets: (modpackId: string, paths: string[]) => Promise<{ success: boolean; count?: number; error?: string }>
-      devGetNews: () => Promise<{ success: boolean; data?: NewsItem[]; error?: string }>
-      devUpdateNews: (news: NewsItem[]) => Promise<{ success: boolean; error?: string }>
 
       clearCache: (type: 'versions' | 'libraries' | 'all') => Promise<{ success: boolean; cleared?: string[]; error?: string }>
 
@@ -180,6 +182,9 @@ declare global {
       getLauncherIcon: () => Promise<{ success: boolean; iconPath: string | null }>
 
       readImageAsDataUrl: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
+
+      linkMinecraftManual: (mcid: string) => Promise<{ ok: boolean; error?: string }>
+      linkDiscord: () => Promise<{ success: boolean; error?: string }>
 
       // アップデート機能
       checkForUpdates: () => Promise<{ success: boolean; error?: string }>

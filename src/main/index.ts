@@ -502,6 +502,16 @@ ipcMain.handle('auth-microsoft', async () => {
       userType: 'msa'
     }
     store.set('mc.auth', authData)
+
+    // Shouchanアカウントに紐付けてホワイトリスト自動登録
+    const launcherAccount = store.get('launcherAccount') as { token?: string } | null
+    if (launcherAccount?.token) {
+      axios.post(`${MODPACK_SERVER_URL}/account/link-minecraft`,
+        { mcid: authData.name, uuid: authData.uuid },
+        { headers: { Authorization: `Bearer ${launcherAccount.token}` }, timeout: 10000 }
+      ).catch(() => { /* ホワイトリスト登録失敗はエラーにしない */ })
+    }
+
     return { success: true, mcUsername: authData.name }
   } catch (err: unknown) {
     return { success: false, error: (err as Error).message }
@@ -539,6 +549,16 @@ ipcMain.handle('auth-refresh', async () => {
       userType: 'msa'
     }
     store.set('mc.auth', authData)
+
+    // Shouchanアカウントに紐付けてホワイトリスト自動登録
+    const launcherAccountR = store.get('launcherAccount') as { token?: string } | null
+    if (launcherAccountR?.token) {
+      axios.post(`${MODPACK_SERVER_URL}/account/link-minecraft`,
+        { mcid: authData.name, uuid: authData.uuid },
+        { headers: { Authorization: `Bearer ${launcherAccountR.token}` }, timeout: 10000 }
+      ).catch(() => { /* ホワイトリスト登録失敗はエラーにしない */ })
+    }
+
     return { success: true, mcUsername: authData.name }
   } catch (err: unknown) {
     return { success: false, error: (err as Error).message }
@@ -547,6 +567,52 @@ ipcMain.handle('auth-refresh', async () => {
 
 ipcMain.handle('logout-mc', () => {
   store.delete('mc.auth')
+})
+
+// ── Discord 連携 ────────────────────────────────────────────────────────────
+ipcMain.handle('link-discord', async () => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインしてください' }
+
+    const loginUrl = `https://mc-shouchan.jp/auth/discord/login?token=${encodeURIComponent(account.token)}`
+
+    return new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const win = new BrowserWindow({
+        width: 800,
+        height: 700,
+        webPreferences: { nodeIntegration: false, contextIsolation: true }
+      })
+      win.loadURL(loginUrl)
+
+      const checkCallback = (_e: Electron.Event, navUrl: string) => {
+        if (navUrl.includes('/auth/discord/callback')) {
+          setTimeout(() => { if (!win.isDestroyed()) win.close() }, 3000)
+        }
+      }
+      win.webContents.on('did-navigate', checkCallback)
+      win.webContents.on('will-redirect', checkCallback)
+      win.on('closed', () => resolve({ success: true }))
+    })
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('link-minecraft-manual', async (_e, mcid: string) => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { ok: false, error: 'ログインしてください' }
+    const res = await axios.post(
+      `${MODPACK_SERVER_URL}/account/link-minecraft`,
+      { mcid },
+      { headers: { Authorization: `Bearer ${account.token}` }, timeout: 15000 }
+    )
+    return res.data
+  } catch (err: unknown) {
+    const e = err as { response?: { data?: { error?: string } }; message?: string }
+    return { ok: false, error: e.response?.data?.error || e.message || '内部エラー' }
+  }
 })
 
 // ── 開発者コード検証 ───────────────────────────────────────────────────────
@@ -2417,26 +2483,6 @@ ipcMain.handle('dev-save-modpack-download-targets', async (_e, modpackId: string
   }
 })
 
-ipcMain.handle('dev-get-news', async () => {
-  try {
-    const res = await axios.get(`${MODPACK_SERVER_URL}/admin/news`, { headers: devHeaders(), timeout: 10000 })
-    return { success: true, data: res.data }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
-
-ipcMain.handle('dev-update-news', async (_e, news: unknown) => {
-  try {
-    await axios.put(`${MODPACK_SERVER_URL}/admin/news`, news, {
-      headers: { ...devHeaders(), 'Content-Type': 'application/json' },
-      timeout: 10000
-    })
-    return { success: true }
-  } catch (err: unknown) {
-    return { success: false, error: (err as Error).message }
-  }
-})
 
 // ── キャッシュクリア ─────────────────────────────────────────────────────────
 ipcMain.handle('clear-cache', async (_e, type: 'versions' | 'libraries' | 'all') => {
