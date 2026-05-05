@@ -34,6 +34,7 @@ interface SetupData {
   maxMemory: string
   minMemory: string
   closeOnLaunch: boolean
+  closeOnExit: boolean
 }
 
 const STEPS = ['アカウント', 'Minecraft認証', 'ゲーム設定', 'Java設定', 'メモリ設定', '完了']
@@ -56,7 +57,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
     javaPath: '',
     maxMemory: '4G',
     minMemory: '2G',
-    closeOnLaunch: false
+    closeOnLaunch: false,
+    closeOnExit: false
   })
   const [accountError, setAccountError] = useState('')
   const [accountLoading, setAccountLoading] = useState(false)
@@ -121,12 +123,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
 
     if (accountMode === 'login') {
       // ログイン時はサーバー側に保存されている設定をローカルから読み戻して反映
-      const [gameDir, javaPath, maxMemory, minMemory, closeOnLaunch] = await Promise.all([
+      const [gameDir, javaPath, maxMemory, minMemory, closeOnLaunch, closeOnExit] = await Promise.all([
         window.api.getStore('settings.gameDir'),
         window.api.getStore('settings.javaPath'),
         window.api.getStore('settings.maxMemory'),
         window.api.getStore('settings.minMemory'),
         window.api.getStore('settings.closeOnLaunch'),
+        window.api.getStore('settings.closeOnExit'),
       ])
       update({
         resolvedAccount: verifyRes.account,
@@ -136,6 +139,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
         maxMemory: typeof maxMemory === 'string' ? maxMemory : '4G',
         minMemory: typeof minMemory === 'string' ? minMemory : '2G',
         closeOnLaunch: typeof closeOnLaunch === 'boolean' ? closeOnLaunch : false,
+        closeOnExit: typeof closeOnExit === 'boolean' ? closeOnExit : false,
       })
     } else {
       update({ resolvedAccount: verifyRes.account })
@@ -196,6 +200,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
     await window.api.setStore('settings.maxMemory', data.maxMemory)
     await window.api.setStore('settings.minMemory', data.minMemory)
     await window.api.setStore('settings.closeOnLaunch', data.closeOnLaunch)
+    await window.api.setStore('settings.closeOnExit', data.closeOnExit)
     await window.api.setStore('setupCompleted', true)
     onComplete(account, data.mcUsername)
   }
@@ -473,7 +478,14 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
                   className={`w-10 h-5 rounded-full transition-colors flex-shrink-0 ${data.closeOnLaunch ? 'bg-blue-500' : 'bg-gray-700'}`}>
                   <div className={`w-4 h-4 bg-white rounded-full m-0.5 transition-transform ${data.closeOnLaunch ? 'translate-x-5' : 'translate-x-0'}`} />
                 </div>
-                <span className="text-sm text-gray-300">Minecraft起動後にランチャーを閉じる</span>
+                <span className="text-sm text-gray-300">Minecraft起動後にランチャーを最小化</span>
+              </label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <div onClick={() => update({ closeOnExit: !data.closeOnExit })}
+                  className={`w-10 h-5 rounded-full transition-colors flex-shrink-0 ${data.closeOnExit ? 'bg-blue-500' : 'bg-gray-700'}`}>
+                  <div className={`w-4 h-4 bg-white rounded-full m-0.5 transition-transform ${data.closeOnExit ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+                <span className="text-sm text-gray-300">Minecraft終了後にランチャーを終了</span>
               </label>
             </div>
           )}

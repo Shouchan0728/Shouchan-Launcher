@@ -195,6 +195,7 @@ export default function HomeView({
     const minMem = ((await window.api.getStore('settings.minMemory')) as string) || '2G'
     const javaPath = ((await window.api.getStore('settings.javaPath')) as string) || ''
     const closeOnLaunch = ((await window.api.getStore('settings.closeOnLaunch')) as boolean) ?? false
+    const closeOnExit = ((await window.api.getStore('settings.closeOnExit')) as boolean) ?? false
 
     const launchInfoRes = await window.api.fetchModpackLaunchInfo(selectedModpackId)
     const launchInfo = launchInfoRes.success && launchInfoRes.data ? launchInfoRes.data : selectedModpack
@@ -210,6 +211,7 @@ export default function HomeView({
       minMemory: minMem,
       javaPath: javaPath || undefined,
       closeOnLaunch,
+      closeOnExit,
       modpackId: selectedModpackId
     })
     if (result.success) {
