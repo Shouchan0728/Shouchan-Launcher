@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   User, Mail, Shield, Calendar, Camera, Trash2, CheckCircle, Loader2,
-  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Shirt, Upload, RefreshCw
+  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Pencil, Shirt, Upload, RefreshCw
 } from 'lucide-react'
-import { LauncherAccount, MinecraftProfile } from '../types'
+import { LauncherAccount, WhitelistStatus, MinecraftProfile } from '../types'
 
 interface AccountPageProps {
   account: LauncherAccount
@@ -31,6 +31,10 @@ export default function AccountPage({
   const [skinLoading, setSkinLoading] = useState(false)
   const [capeLoading, setCapeLoading] = useState(false)
   const [skinPreviewUrl, setSkinPreviewUrl] = useState<string | null>(null)
+  const [wlStatus, setWlStatus] = useState<WhitelistStatus | null>(null)
+  const [usernameInput, setUsernameInput] = useState(account.username || '')
+  const [usernameEditing, setUsernameEditing] = useState(false)
+  const [usernameLoading, setUsernameLoading] = useState(false)
 
   const ok = (msg: string) => { setStatus({ msg, type: 'ok' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 3000) }
   const err = (msg: string) => { setStatus({ msg, type: 'error' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 4000) }
@@ -91,9 +95,26 @@ export default function AccountPage({
     }
   }
 
+  const refreshWhitelistStatus = async () => {
+    const res = await window.api.fetchWhitelistStatus()
+    if (res.ok) {
+      setWlStatus({ registered: res.registered, mcid: res.mcid, mc_uuid: res.mc_uuid })
+    }
+  }
+
   useEffect(() => {
     if (account.linkedMicrosoft) loadProfile()
   }, [])
+
+  useEffect(() => {
+    refreshWhitelistStatus()
+  }, [account.id])
+
+  useEffect(() => {
+    setUsernameInput(account.username || '')
+  }, [account.username])
+
+  const displayName = account.discord_name || account.username
 
   const handleAvatarSelect = async () => {
     const filePath = await window.api.selectFile([{ name: '画像', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }])
@@ -130,6 +151,7 @@ export default function AccountPage({
       })
       onMcUsernameChange(res.mcUsername)
       ok(`${res.mcUsername} と紐付けました`)
+      refreshWhitelistStatus()
     } else {
       err(res.error || 'Microsoft認証に失敗しました')
     }
@@ -142,9 +164,9 @@ export default function AccountPage({
     const res = await window.api.linkMinecraftManual(mcid)
     setWlLoading(false)
     if (res.ok) {
-      onAccountChange({ ...account, mc_name: mcid })
       setMcidInput('')
       ok(`${mcid} をホワイトリストに登録しました`)
+      refreshWhitelistStatus()
     } else {
       err(res.error || 'ホワイトリスト登録に失敗しました')
     }
@@ -159,6 +181,25 @@ export default function AccountPage({
     ok('Microsoftアカウントの紐付けを解除しました')
   }
 
+  const handleSaveUsername = async () => {
+    const name = usernameInput.trim()
+    if (!name) return
+    if (name === account.username) {
+      setUsernameEditing(false)
+      return
+    }
+    setUsernameLoading(true)
+    const res = await window.api.updateLauncherUsername(name)
+    setUsernameLoading(false)
+    if (res.ok) {
+      onAccountChange({ ...account, username: res.username || name })
+      setUsernameEditing(false)
+      ok('ユーザー名を変更しました')
+    } else {
+      err(res.error || 'ユーザー名の変更に失敗しました')
+    }
+  }
+
   const formatDate = (iso: string) => {
     if (!iso) return '不明'
     try {
@@ -168,7 +209,7 @@ export default function AccountPage({
     }
   }
 
-  const initial = (account.username || account.email || '?')[0]?.toUpperCase() || '?'
+  const initial = (displayName || account.email || '?')[0]?.toUpperCase() || '?'
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -207,10 +248,15 @@ export default function AccountPage({
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="text-lg font-bold text-white truncate">{account.username}</h3>
+                <h3 className="text-lg font-bold text-white truncate">{displayName}</h3>
                 {account.role === 'developer' && (
                   <span className="flex items-center gap-1 rounded px-1.5 py-0.5 bg-yellow-500/10 border border-yellow-500/20 text-[10px] text-yellow-400">
                     <Shield size={10} /> 開発者
+                  </span>
+                )}
+                {account.discord_name && (
+                  <span className="rounded px-1.5 py-0.5 bg-indigo-500/10 border border-indigo-500/20 text-[10px] text-indigo-300">
+                    Discord
                   </span>
                 )}
               </div>
@@ -299,11 +345,11 @@ export default function AccountPage({
             <ListPlus size={14} />
             ホワイトリスト登録
           </h3>
-          {account.mc_name ? (
+          {wlStatus?.registered ? (
             <div className="flex items-center gap-3 bg-[#0d0d14] border border-green-500/20 rounded-lg p-3">
               <Gamepad2 size={16} className="text-green-400 flex-shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{account.mc_name}</p>
+                <p className="text-sm font-semibold text-white truncate">{wlStatus.mcid}</p>
                 <p className="text-xs text-gray-500">ホワイトリスト登録済み</p>
               </div>
               <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
@@ -477,7 +523,49 @@ export default function AccountPage({
           <h3 className="mb-3 text-sm font-semibold text-gray-300">アカウント詳細</h3>
           <div className="flex flex-col gap-2 text-sm">
             <Row label="ユーザーID" value={account.id || '(不明)'} />
-            <Row label="ユーザー名" value={account.username} />
+            {account.discord_name ? (
+              <Row label="ユーザー名" value={account.discord_name} hint="Discord連携中" />
+            ) : (
+              <div className="flex items-center justify-between py-1.5 border-b border-white/5 gap-3">
+                <span className="text-gray-500 flex-shrink-0">ユーザー名</span>
+                {usernameEditing ? (
+                  <div className="flex items-center gap-1.5 flex-1 justify-end">
+                    <input
+                      type="text"
+                      value={usernameInput}
+                      onChange={e => setUsernameInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleSaveUsername()}
+                      maxLength={64}
+                      className="bg-[#0d0d14] border border-white/10 rounded px-2 py-1 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50 w-40"
+                    />
+                    <button
+                      onClick={handleSaveUsername}
+                      disabled={usernameLoading || !usernameInput.trim()}
+                      className="rounded bg-green-700 hover:bg-green-600 disabled:opacity-50 px-2 py-1 text-xs font-semibold"
+                    >
+                      {usernameLoading ? <Loader2 size={11} className="animate-spin" /> : '保存'}
+                    </button>
+                    <button
+                      onClick={() => { setUsernameEditing(false); setUsernameInput(account.username || '') }}
+                      className="rounded bg-[#0d0d14] border border-white/10 hover:bg-white/5 px-2 py-1 text-xs text-gray-400"
+                    >
+                      取消
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-gray-200 truncate">{account.username}</span>
+                    <button
+                      onClick={() => setUsernameEditing(true)}
+                      className="text-gray-500 hover:text-white transition-colors flex-shrink-0"
+                      title="ユーザー名を変更"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
             <Row label="メールアドレス" value={account.email} />
             <Row label="ロール" value={account.role === 'developer' ? '開発者' : 'プレイヤー'} />
             <Row label="登録日" value={formatDate(account.createdAt)} />
@@ -488,11 +576,14 @@ export default function AccountPage({
   )
 }
 
-function Row({ label, value }: { label: string; value: string }): React.JSX.Element {
+function Row({ label, value, hint }: { label: string; value: string; hint?: string }): React.JSX.Element {
   return (
     <div className="flex justify-between py-1.5 border-b border-white/5 last:border-b-0">
       <span className="text-gray-500">{label}</span>
-      <span className="text-gray-200 truncate ml-4">{value}</span>
+      <div className="flex items-center gap-2 min-w-0">
+        {hint && <span className="text-[10px] text-indigo-300/70">{hint}</span>}
+        <span className="text-gray-200 truncate ml-1">{value}</span>
+      </div>
     </div>
   )
 }

@@ -8,6 +8,7 @@ export default function SettingsView(): React.JSX.Element {
   const [javaPath, setJavaPath] = useState('')
   const [jvmArgs, setJvmArgs] = useState('')
   const [closeOnLaunch, setCloseOnLaunch] = useState(false)
+  const [closeOnExit, setCloseOnExit] = useState(false)
   const [saved, setSaved] = useState(false)
   const [cacheCleared, setCacheCleared] = useState(false)
   const [clearingCache, setClearingCache] = useState(false)
@@ -26,8 +27,10 @@ export default function SettingsView(): React.JSX.Element {
       if (min) setMinMemory(min)
       if (java) setJavaPath(java)
       const close = (await window.api.getStore('settings.closeOnLaunch')) as boolean
+      const closeExit = (await window.api.getStore('settings.closeOnExit')) as boolean
       if (args) setJvmArgs(args)
       setCloseOnLaunch(close || false)
+      setCloseOnExit(closeExit || false)
     }
     load()
   }, [])
@@ -44,7 +47,8 @@ export default function SettingsView(): React.JSX.Element {
     await window.api.setStore('settings.javaPath', javaPath)
     await window.api.setStore('settings.jvmArgs', jvmArgs)
     await window.api.setStore('settings.closeOnLaunch', closeOnLaunch)
-    window.api.accountSyncSettings({ gameDir, maxMemory, minMemory, javaPath, closeOnLaunch }).catch(() => {})
+    await window.api.setStore('settings.closeOnExit', closeOnExit)
+    window.api.accountSyncSettings({ gameDir, maxMemory, minMemory, javaPath, closeOnLaunch, closeOnExit }).catch(() => {})
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -201,15 +205,26 @@ export default function SettingsView(): React.JSX.Element {
 
         <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
           <h3 className="mb-4 text-sm font-semibold text-gray-300">起動オプション</h3>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <div
-              onClick={() => setCloseOnLaunch(!closeOnLaunch)}
-              className={`w-10 h-5 rounded-full transition-colors ${closeOnLaunch ? 'bg-blue-500' : 'bg-gray-700'}`}
-            >
-              <div className={`w-4 h-4 bg-white rounded-full m-0.5 transition-transform ${closeOnLaunch ? 'translate-x-5' : 'translate-x-0'}`} />
-            </div>
-            <span className="text-sm text-gray-300">Minecraft起動後にランチャーを閉じる</span>
-          </label>
+          <div className="flex flex-col gap-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div
+                onClick={() => setCloseOnLaunch(!closeOnLaunch)}
+                className={`w-10 h-5 rounded-full transition-colors ${closeOnLaunch ? 'bg-blue-500' : 'bg-gray-700'}`}
+              >
+                <div className={`w-4 h-4 bg-white rounded-full m-0.5 transition-transform ${closeOnLaunch ? 'translate-x-5' : 'translate-x-0'}`} />
+              </div>
+              <span className="text-sm text-gray-300">Minecraft起動後にランチャーを最小化</span>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div
+                onClick={() => setCloseOnExit(!closeOnExit)}
+                className={`w-10 h-5 rounded-full transition-colors ${closeOnExit ? 'bg-blue-500' : 'bg-gray-700'}`}
+              >
+                <div className={`w-4 h-4 bg-white rounded-full m-0.5 transition-transform ${closeOnExit ? 'translate-x-5' : 'translate-x-0'}`} />
+              </div>
+              <span className="text-sm text-gray-300">Minecraft終了後にランチャーを終了</span>
+            </label>
+          </div>
         </div>
 
         <div className="rounded-xl bg-[#1a1a2e] border border-red-500/20 p-5">
