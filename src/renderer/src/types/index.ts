@@ -85,6 +85,26 @@ export interface ServerModpack {
   icon?: string // data URL
 }
 
+export interface MinecraftSkin {
+  id: string
+  state: 'ACTIVE' | 'INACTIVE'
+  url: string
+  variant: 'CLASSIC' | 'SLIM'
+}
+
+export interface MinecraftCape {
+  id: string
+  state: 'ACTIVE' | 'INACTIVE'
+  alias: string
+}
+
+export interface MinecraftProfile {
+  id: string
+  name: string
+  skins: MinecraftSkin[]
+  capes: MinecraftCape[]
+}
+
 export type LaunchStatus = 'idle' | 'updating' | 'launching' | 'running' | 'error'
 export type ViewType = 'home' | 'settings' | 'logs' | 'developer' | 'account'
 export type AppState = 'loading' | 'setup' | 'login' | 'reauth' | 'main'
@@ -127,6 +147,7 @@ declare global {
       fetchNews: () => Promise<{ success: boolean; data?: NewsItem[]; error?: string }>
       updateModpack: (dir: string) => Promise<{ success: boolean; error?: string }>
       launchMinecraft: (options: LaunchMinecraftOptions) => Promise<{ success: boolean; error?: string }>
+      killMinecraft: () => Promise<{ success: boolean; error?: string }>
       selectDirectory: () => Promise<string | null>
       selectFile: (filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
       getAppVersion: () => Promise<string>
@@ -182,6 +203,11 @@ declare global {
       getLauncherIcon: () => Promise<{ success: boolean; iconPath: string | null }>
 
       readImageAsDataUrl: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
+
+      fetchImageDataUrl: (url: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
+      getMinecraftProfile: () => Promise<{ success: boolean; data?: MinecraftProfile; error?: string }>
+      uploadSkin: (filePath: string, variant: 'classic' | 'slim') => Promise<{ success: boolean; error?: string }>
+      setCape: (capeId: string | null) => Promise<{ success: boolean; error?: string }>
 
       linkMinecraftManual: (mcid: string) => Promise<{ ok: boolean; error?: string }>
       linkDiscord: () => Promise<{ success: boolean; error?: string }>

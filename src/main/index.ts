@@ -27,6 +27,8 @@ if (!gotTheLock) {
 let isLaunchingMinecraft = false
 // ゲーム起動確認時刻（プレイ時間計算用）
 let gameStartTime: Date | null = null
+// 実行中のMinecraftプロセス（強制終了用）
+let runningMcProcess: ReturnType<typeof spawn> | null = null
 
 const MODPACK_SERVER_URL = 'https://mc-shouchan.jp/api'
 // ↓ 配布前に変更してください。このコードを知っている人だけ開発者になれます。
@@ -115,6 +117,22 @@ interface MojangVersionJson {
 }
 
 const normalizePath = (p: string): string => p.replace(/\\/g, '/').replace(/^\/+/, '')
+
+// Parallel download helper (limit concurrent connections while running in parallel)
+const parallelForEach = async <T>(
+  items: T[],
+  worker: (item: T) => Promise<void>,
+  concurrency = 16
+): Promise<void> => {
+  if (items.length === 0) return
+  let idx = 0
+  const run = async (): Promise<void> => {
+    while (idx < items.length) {
+      await worker(items[idx++])
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run))
+}
 
 const modpackInfoUrl = (id: string): string => `${MODPACK_SERVER_URL}/modpack/${encodeURIComponent(id)}/info`
 const modpackFilesUrl = (id: string): string => `${MODPACK_SERVER_URL}/modpack/${encodeURIComponent(id)}/files`
@@ -209,22 +227,22 @@ const ensureMinecraftAssets = async (
 
     let done = 0
     const total = entries.length
-    for (const entry of entries) {
-      done++
+
+    await parallelForEach(entries, async (entry) => {
       const hash = entry.hash
       const head = hash.slice(0, 2)
       const localPath = path.join(objectsDir, head, hash)
-      if (fs.existsSync(localPath)) continue
-
+      done++
+      if (fs.existsSync(localPath)) {
+        if (done % 250 === 0 || done === total) onProgress?.(`[Launcher] assets 取得: ${done}/${total}`)
+        return
+      }
       fs.mkdirSync(path.dirname(localPath), { recursive: true })
       const url = `https://resources.download.minecraft.net/${head}/${hash}`
       const objRes = await axios.get(url, { responseType: 'arraybuffer', timeout: 60000 })
       fs.writeFileSync(localPath, Buffer.from(objRes.data))
-
-      if (done % 250 === 0 || done === total) {
-        onProgress?.(`[Launcher] assets 取得: ${done}/${total}`)
-      }
-    }
+      if (done % 250 === 0 || done === total) onProgress?.(`[Launcher] assets 取得: ${done}/${total}`)
+    }, 32)
 
     onProgress?.(`[Launcher] assets 確認完了: ${assetIndexInfo.id} (${total}件)`)
     return { success: true, assetIndexId: assetIndexInfo.id }
@@ -275,17 +293,20 @@ const ensureOfficialMinecraftLibraries = async (gameDir: string, mcVersion: stri
 
     let done = 0
     const total = downloadTargets.size
-    for (const [artifactPath, artifactUrl] of downloadTargets.entries()) {
+    const targetEntries = Array.from(downloadTargets.entries())
+
+    await parallelForEach(targetEntries, async ([artifactPath, artifactUrl]) => {
       done++
       const localPath = path.join(libDir, artifactPath)
-      if (fs.existsSync(localPath)) continue
+      if (fs.existsSync(localPath)) {
+        if (done % 25 === 0 || done === total) onProgress?.(`[Launcher] 公式libraries取得: ${done}/${total}`)
+        return
+      }
       fs.mkdirSync(path.dirname(localPath), { recursive: true })
       const res = await axios.get(artifactUrl, { responseType: 'arraybuffer', timeout: 60000 })
       fs.writeFileSync(localPath, Buffer.from(res.data))
-      if (done % 25 === 0 || done === total) {
-        onProgress?.(`[Launcher] 公式libraries取得: ${done}/${total}`)
-      }
-    }
+      if (done % 25 === 0 || done === total) onProgress?.(`[Launcher] 公式libraries取得: ${done}/${total}`)
+    }, 16)
 
     onProgress?.(`[Launcher] 公式ランチャー準拠librariesの確認完了 (${total}件)`)
     return true
@@ -886,106 +907,25 @@ const downloadJar = async (url: string, destPath: string, minSize = MIN_JAR_SIZE
 const downloadAdditionalLibs = async (gameDir: string, onProgress?: (msg: string) => void): Promise<boolean> => {
   try {
     const libDir = path.join(gameDir, 'libraries')
-
-    // slf4j-api (required by many mods)
-    const slf4jApi = 'org.slf4j:slf4j-api:2.0.9'
-    const slf4jApiPath = path.join(libDir, 'org/slf4j/slf4j-api/2.0.9/slf4j-api-2.0.9.jar')
-    if (!fs.existsSync(slf4jApiPath)) {
-      onProgress?.(`[Launcher] Downloading slf4j-api...`)
-      await downloadLibrary(libDir, slf4jApi, 'https://repo1.maven.org/maven2')
-    }
-
-    // slf4j-simple (logging implementation)
-    const slf4jSimple = 'org.slf4j:slf4j-simple:2.0.9'
-    const slf4jSimplePath = path.join(libDir, 'org/slf4j/slf4j-simple/2.0.9/slf4j-simple-2.0.9.jar')
-    if (!fs.existsSync(slf4jSimplePath)) {
-      onProgress?.(`[Launcher] Downloading slf4j-simple...`)
-      await downloadLibrary(libDir, slf4jSimple, 'https://repo1.maven.org/maven2')
-    }
-
-    // JOML (math library for Sodium)
-    const joml = 'org.joml:joml:1.10.8'
-    const jomlPath = path.join(libDir, 'org/joml/joml/1.10.8/joml-1.10.8.jar')
-    if (!fs.existsSync(jomlPath)) {
-      onProgress?.(`[Launcher] Downloading joml...`)
-      await downloadLibrary(libDir, joml, 'https://repo1.maven.org/maven2')
-    }
-
-    // FastUtil (required by Minecraft and mods)
-    const fastutil = 'it.unimi.dsi:fastutil:8.5.12'
-    const fastutilPath = path.join(libDir, 'it/unimi/dsi/fastutil/8.5.12/fastutil-8.5.12.jar')
-    if (!fs.existsSync(fastutilPath)) {
-      onProgress?.(`[Launcher] Downloading fastutil...`)
-      await downloadLibrary(libDir, fastutil, 'https://repo1.maven.org/maven2')
-    }
-
-    // Log4j (required by many mods for logging)
-    const log4jApi = 'org.apache.logging.log4j:log4j-api:2.22.1'
-    const log4jCore = 'org.apache.logging.log4j:log4j-core:2.22.1'
-    const log4jApiPath = path.join(libDir, 'org/apache/logging/log4j/log4j-api/2.22.1/log4j-api-2.22.1.jar')
-    const log4jCorePath = path.join(libDir, 'org/apache/logging/log4j/log4j-core/2.22.1/log4j-core-2.22.1.jar')
-    if (!fs.existsSync(log4jApiPath)) {
-      onProgress?.(`[Launcher] Downloading log4j-api...`)
-      await downloadLibrary(libDir, log4jApi, 'https://repo1.maven.org/maven2')
-    }
-    if (!fs.existsSync(log4jCorePath)) {
-      onProgress?.(`[Launcher] Downloading log4j-core...`)
-      await downloadLibrary(libDir, log4jCore, 'https://repo1.maven.org/maven2')
-    }
-
-    // Google Guava (required by many mods)
-    const guava = 'com.google.guava:guava:32.1.3-jre'
-    const guavaPath = path.join(libDir, 'com/google/guava/guava/32.1.3-jre/guava-32.1.3-jre.jar')
-    if (!fs.existsSync(guavaPath)) {
-      onProgress?.(`[Launcher] Downloading guava...`)
-      await downloadLibrary(libDir, guava, 'https://repo1.maven.org/maven2')
-    }
-
-    // Mojang Logging (required by Minecraft client bootstrap)
-    const mojangLogging = 'com.mojang:logging:1.5.10'
-    const mojangLoggingPath = path.join(libDir, 'com/mojang/logging/1.5.10/logging-1.5.10.jar')
-    if (!fs.existsSync(mojangLoggingPath)) {
-      onProgress?.(`[Launcher] Downloading mojang-logging...`)
-      await downloadLibrary(libDir, mojangLogging, 'https://repo1.maven.org/maven2')
-    }
-
-    // Gson (required by Fabric ecosystem mods such as ImmediatelyFast)
-    const gson = 'com.google.code.gson:gson:2.11.0'
-    const gsonPath = path.join(libDir, 'com/google/code/gson/gson/2.11.0/gson-2.11.0.jar')
-    if (!fs.existsSync(gsonPath)) {
-      onProgress?.(`[Launcher] Downloading gson...`)
-      await downloadLibrary(libDir, gson, 'https://repo1.maven.org/maven2')
-    }
-
-    // jopt-simple (required by mods)
-    const jopt = 'net.sf.jopt-simple:jopt-simple:5.0.4'
-    const joptPath = path.join(libDir, 'net/sf/jopt-simple/jopt-simple/5.0.4/jopt-simple-5.0.4.jar')
-    if (!fs.existsSync(joptPath)) {
-      onProgress?.(`[Launcher] Downloading jopt-simple...`)
-      await downloadLibrary(libDir, jopt, 'https://repo1.maven.org/maven2')
-    }
-
-    // LWJGL (required by Minecraft and mods)
     const lwjglVersion = '3.3.3'
-    const lwjglLibs = [
+
+    const additionalLibs = [
+      'org.slf4j:slf4j-api:2.0.9',
+      'org.slf4j:slf4j-simple:2.0.9',
+      'org.joml:joml:1.10.8',
+      'it.unimi.dsi:fastutil:8.5.12',
+      'org.apache.logging.log4j:log4j-api:2.22.1',
+      'org.apache.logging.log4j:log4j-core:2.22.1',
+      'com.google.guava:guava:32.1.3-jre',
+      'com.mojang:logging:1.5.10',
+      'com.google.code.gson:gson:2.11.0',
+      'net.sf.jopt-simple:jopt-simple:5.0.4',
       `org.lwjgl:lwjgl:${lwjglVersion}`,
       `org.lwjgl:lwjgl-glfw:${lwjglVersion}`,
       `org.lwjgl:lwjgl-jemalloc:${lwjglVersion}`,
       `org.lwjgl:lwjgl-openal:${lwjglVersion}`,
       `org.lwjgl:lwjgl-opengl:${lwjglVersion}`,
       `org.lwjgl:lwjgl-stb:${lwjglVersion}`,
-    ]
-    for (const lib of lwjglLibs) {
-      const { path: mavenPath, name } = parseMavenPath(lib)
-      const libPath = path.join(libDir, mavenPath)
-      if (!fs.existsSync(libPath)) {
-        onProgress?.(`[Launcher] Downloading ${name}...`)
-        await downloadLibrary(libDir, lib, 'https://repo1.maven.org/maven2')
-      }
-    }
-
-    // LWJGL natives (DLL files for Windows)
-    const lwjglNatives = [
       `org.lwjgl:lwjgl:${lwjglVersion}:natives-windows`,
       `org.lwjgl:lwjgl-glfw:${lwjglVersion}:natives-windows`,
       `org.lwjgl:lwjgl-jemalloc:${lwjglVersion}:natives-windows`,
@@ -993,14 +933,11 @@ const downloadAdditionalLibs = async (gameDir: string, onProgress?: (msg: string
       `org.lwjgl:lwjgl-opengl:${lwjglVersion}:natives-windows`,
       `org.lwjgl:lwjgl-stb:${lwjglVersion}:natives-windows`,
     ]
-    for (const lib of lwjglNatives) {
-      const { path: mavenPath, name } = parseMavenPath(lib)
-      const libPath = path.join(libDir, mavenPath)
-      if (!fs.existsSync(libPath)) {
-        onProgress?.(`[Launcher] Downloading ${name} (natives)...`)
-        await downloadLibrary(libDir, lib, 'https://repo1.maven.org/maven2')
-      }
-    }
+
+    await parallelForEach(additionalLibs, async (lib) => {
+      const success = await downloadLibrary(libDir, lib)
+      if (!success) onProgress?.(`[Launcher] Failed to download additional lib: ${lib}`)
+    }, 16)
 
     return true
   } catch (err) {
@@ -1107,17 +1044,10 @@ const installFabricLoader = async (
     const profile = JSON.parse(fs.readFileSync(versionJsonPath, 'utf-8'))
     const libraries: FabricLibrary[] = profile.libraries || []
 
-    const total = libraries.length
-    let downloaded = 0
-
-    for (const lib of libraries) {
-      downloaded++
-      onProgress?.(`[Fabric] Downloading libraries (${downloaded}/${total}): ${lib.name.split(':')[1]}`)
+    await parallelForEach(libraries, async (lib) => {
       const success = await downloadLibrary(libDir, lib.name, lib.url)
-      if (!success) {
-        onProgress?.(`[Fabric] Failed to download: ${lib.name}`)
-      }
-    }
+      if (!success) onProgress?.(`[Fabric] Failed to download: ${lib.name}`)
+    }, 16)
 
     return true
   } catch {
@@ -1163,17 +1093,10 @@ const installQuiltLoader = async (
     const profile = JSON.parse(fs.readFileSync(versionJsonPath, 'utf-8'))
     const libraries: FabricLibrary[] = profile.libraries || []
 
-    const total = libraries.length
-    let downloaded = 0
-
-    for (const lib of libraries) {
-      downloaded++
-      onProgress?.(`[Quilt] Downloading libraries (${downloaded}/${total}): ${lib.name.split(':')[1]}`)
+    await parallelForEach(libraries, async (lib) => {
       const success = await downloadLibrary(libDir, lib.name, lib.url)
-      if (!success) {
-        onProgress?.(`[Quilt] Failed to download: ${lib.name}`)
-      }
-    }
+      if (!success) onProgress?.(`[Quilt] Failed to download: ${lib.name}`)
+    }, 16)
 
     return true
   } catch {
@@ -1750,6 +1673,7 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
         cwd: options.gameDir,
         env: env // Use env with natives PATH
       })
+      runningMcProcess = mc
 
       let resolved = false
       const TIMEOUT_MS = 300000
@@ -1789,6 +1713,7 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           reject(new Error(`Minecraft exited with code ${code}`))
         }
         isLaunchingMinecraft = false
+        runningMcProcess = null
 
         // プレイ時間を計算して保存
         let addedMinutes = 0
@@ -1819,6 +1744,18 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
 })
 
 ipcMain.handle('is-launching-minecraft', () => isLaunchingMinecraft)
+
+ipcMain.handle('kill-minecraft', () => {
+  if (!runningMcProcess) {
+    return { success: false, error: 'Minecraftは起動していません' }
+  }
+  try {
+    runningMcProcess.kill()
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
 
 // ── Java インストール (GraalVM CE JDK 25) ────────────────────────────────────
 ipcMain.handle('install-java', async (event) => {
@@ -2159,6 +2096,84 @@ ipcMain.handle('account-verify-token', async () => {
     return { success: true, role: res.data.role as 'developer' | 'player' }
   } catch {
     return { success: false, error: 'Token invalid or server unreachable' }
+  }
+})
+
+// ── 外部画像をdata URLとして取得（レンダラーの制約を回避） ──────────────────────
+ipcMain.handle('fetch-image-dataurl', async (_e, url: string) => {
+  try {
+    const res = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      }
+    })
+    const base64 = Buffer.from(res.data as ArrayBuffer).toString('base64')
+    const contentType = (res.headers['content-type'] as string) || 'image/png'
+    return { success: true, dataUrl: `data:${contentType};base64,${base64}` }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+// ── Minecraft スキン・マント管理 ─────────────────────────────────────────────
+ipcMain.handle('get-minecraft-profile', async () => {
+  const mcAuth = store.get('mc.auth') as MCAuthStore | null
+  if (!mcAuth?.access_token || mcAuth.isOffline) {
+    return { success: false, error: 'Microsoft認証が必要です' }
+  }
+  try {
+    const res = await axios.get('https://api.minecraftservices.com/minecraft/profile', {
+      headers: { Authorization: `Bearer ${mcAuth.access_token}` },
+      timeout: 10000
+    })
+    return { success: true, data: res.data }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('upload-skin', async (_e, filePath: string, variant: 'classic' | 'slim') => {
+  const mcAuth = store.get('mc.auth') as MCAuthStore | null
+  if (!mcAuth?.access_token || mcAuth.isOffline) {
+    return { success: false, error: 'Microsoft認証が必要です' }
+  }
+  try {
+    const form = new FormData()
+    form.append('variant', variant)
+    form.append('file', fs.createReadStream(filePath), { filename: 'skin.png', contentType: 'image/png' })
+    await axios.post('https://api.minecraftservices.com/minecraft/profile/skins', form, {
+      headers: { Authorization: `Bearer ${mcAuth.access_token}`, ...form.getHeaders() },
+      timeout: 30000
+    })
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('set-cape', async (_e, capeId: string | null) => {
+  const mcAuth = store.get('mc.auth') as MCAuthStore | null
+  if (!mcAuth?.access_token || mcAuth.isOffline) {
+    return { success: false, error: 'Microsoft認証が必要です' }
+  }
+  try {
+    if (capeId === null) {
+      await axios.delete('https://api.minecraftservices.com/minecraft/profile/capes/active', {
+        headers: { Authorization: `Bearer ${mcAuth.access_token}` },
+        timeout: 10000
+      })
+    } else {
+      await axios.put(
+        'https://api.minecraftservices.com/minecraft/profile/capes/active',
+        { capeId },
+        { headers: { Authorization: `Bearer ${mcAuth.access_token}`, 'Content-Type': 'application/json' }, timeout: 10000 }
+      )
+    }
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
   }
 })
 
