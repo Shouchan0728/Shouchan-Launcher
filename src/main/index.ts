@@ -77,6 +77,7 @@ interface LaunchOptions {
   javaPath?: string
   jvmArgs?: string[]
   closeOnLaunch?: boolean
+  closeOnExit?: boolean
   modpackId?: string
 }
 
@@ -628,6 +629,40 @@ ipcMain.handle('link-minecraft-manual', async (_e, mcid: string) => {
       `${MODPACK_SERVER_URL}/account/link-minecraft`,
       { mcid },
       { headers: { Authorization: `Bearer ${account.token}` }, timeout: 15000 }
+    )
+    return res.data
+  } catch (err: unknown) {
+    const e = err as { response?: { data?: { error?: string } }; message?: string }
+    return { ok: false, error: e.response?.data?.error || e.message || '内部エラー' }
+  }
+})
+
+ipcMain.handle('fetch-whitelist-status', async () => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { ok: false, registered: false, error: 'ログインしてください' }
+    const res = await axios.get(
+      `${MODPACK_SERVER_URL}/launcher/whitelist-status`,
+      { headers: { Authorization: `Bearer ${account.token}` }, timeout: 10000 }
+    )
+    return res.data
+  } catch (err: unknown) {
+    const e = err as { response?: { data?: { error?: string } }; message?: string }
+    return {
+      ok: false, registered: false,
+      error: e.response?.data?.error || e.message || '内部エラー',
+    }
+  }
+})
+
+ipcMain.handle('update-launcher-username', async (_e, username: string) => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { ok: false, error: 'ログインしてください' }
+    const res = await axios.put(
+      `${MODPACK_SERVER_URL}/launcher/username`,
+      { username },
+      { headers: { Authorization: `Bearer ${account.token}` }, timeout: 10000 }
     )
     return res.data
   } catch (err: unknown) {
@@ -1684,19 +1719,33 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
         }
       }, TIMEOUT_MS)
 
+      // 破棄済み webContents への送信で例外が出ないようガード
+      const safeSend = (channel: string, payload: unknown): void => {
+        try {
+          if (!event.sender.isDestroyed()) event.sender.send(channel, payload)
+        } catch {
+          // すでにウィンドウが閉じられている場合は無視
+        }
+      }
+
       mc.stdout.on('data', (data: Buffer) => {
         const str = data.toString()
-        event.sender.send('launch-log', str)
+        safeSend('launch-log', str)
         if (!resolved && (str.includes('Setting user:') || str.includes('Backend library'))) {
           resolved = true
           gameStartTime = new Date()
           clearTimeout(timeout)
           resolve()
+          // 起動成功後にランチャーを最小化
+          if (options.closeOnLaunch) {
+            const win = BrowserWindow.fromWebContents(event.sender)
+            if (win && !win.isDestroyed()) win.minimize()
+          }
         }
       })
 
       mc.stderr.on('data', (data: Buffer) => {
-        event.sender.send('launch-log', `[STDERR] ${data.toString()}`)
+        safeSend('launch-log', `[STDERR] ${data.toString()}`)
       })
 
       mc.on('error', (err) => {
@@ -1704,7 +1753,7 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           clearTimeout(timeout)
           reject(err)
         }
-        event.sender.send('launch-log', `[Launcher] プロセスエラー: ${err.message}`)
+        safeSend('launch-log', `[Launcher] プロセスエラー: ${err.message}`)
       })
 
       mc.on('close', (code) => {
@@ -1727,11 +1776,15 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
           gameStartTime = null
         }
 
-        event.sender.send('game-closed', { code: code ?? 0, addedMinutes })
-        if (options.closeOnLaunch) app.quit()
+        safeSend('game-closed', { code: code ?? 0, addedMinutes })
+        // ゲーム終了後にランチャーを終了
+        if (options.closeOnExit) {
+          // IPC送信完了を待ってから終了
+          setTimeout(() => app.quit(), 300)
+        }
       })
 
-      event.sender.send('launch-log', `[Launcher] Javaプロセス開始: PID=${mc.pid}`)
+      safeSend('launch-log', `[Launcher] Javaプロセス開始: PID=${mc.pid}`)
     })
 
     store.set('stats.launches', ((store.get('stats.launches', 0) as number) + 1))
@@ -2026,6 +2079,7 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
       if (s.minMemory) store.set('settings.minMemory', s.minMemory)
       if (s.javaPath) store.set('settings.javaPath', s.javaPath)
       if (s.closeOnLaunch !== undefined) store.set('settings.closeOnLaunch', s.closeOnLaunch)
+      if (s.closeOnExit !== undefined) store.set('settings.closeOnExit', s.closeOnExit)
     }
     return { success: true, account }
   } catch (err: unknown) {
@@ -2057,7 +2111,8 @@ ipcMain.handle('account-sync-settings', async () => {
       maxMemory: store.get('settings.maxMemory'),
       minMemory: store.get('settings.minMemory'),
       javaPath: store.get('settings.javaPath'),
-      closeOnLaunch: store.get('settings.closeOnLaunch')
+      closeOnLaunch: store.get('settings.closeOnLaunch'),
+      closeOnExit: store.get('settings.closeOnExit')
     }
     await axios.put(`${MODPACK_SERVER_URL}/account/settings`, { settings }, {
       headers: { Authorization: `Bearer ${account.token}` },
