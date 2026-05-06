@@ -14,7 +14,8 @@ import {
   Package,
   User,
   FolderOpen,
-  Info
+  Info,
+  Square
 } from 'lucide-react'
 import { LauncherAccount, Stats, NewsItem, LaunchStatus, ServerModpack } from '../types'
 
@@ -90,16 +91,21 @@ export default function HomeView({
 
   useEffect(() => {
     const init = async () => {
-      const storedId = (await window.api.getStore('selectedModpackId')) as string || 'default'
+      // Store読み出しを並列化
+      const [storedIdRaw, slowWarning] = await Promise.all([
+        window.api.getStore('selectedModpackId'),
+        window.api.getStore('flags.slowStartWarning')
+      ])
+      const storedId = (storedIdRaw as string) || 'default'
       setSelectedModpackId(storedId)
-
-      const slowWarning = (await window.api.getStore('flags.slowStartWarning')) as boolean | undefined
       if (slowWarning) setShowSlowStartNotice(true)
 
-      const [serverResult, newsResult, listResult] = await Promise.allSettled([
+      // ネットワーク呼び出しをすべて並列化（更新チェックもstoredIdで投機的に並列実行）
+      const [serverResult, newsResult, listResult, updateResultRaw] = await Promise.allSettled([
         window.api.checkServerStatus(SERVER_URL),
         window.api.fetchNews(),
-        window.api.fetchModpackList()
+        window.api.fetchModpackList(),
+        window.api.checkModpackUpdateById(storedId)
       ])
 
       if (serverResult.status === 'fulfilled') setServerOnline(serverResult.value.online)
@@ -109,9 +115,17 @@ export default function HomeView({
         setModpackList(list)
         const effectiveId = list.find((m) => m.id === storedId) ? storedId : list[0]?.id || 'default'
         setSelectedModpackId(effectiveId)
-        const updateResult = await window.api.checkModpackUpdateById(effectiveId)
-        setUpdateAvailable(updateResult.hasUpdate)
-        setServerVersion(updateResult.serverVersion)
+
+        if (effectiveId === storedId && updateResultRaw.status === 'fulfilled') {
+          // storedIdが正しかった場合は並列取得済みの結果を再利用
+          setUpdateAvailable(updateResultRaw.value.hasUpdate)
+          setServerVersion(updateResultRaw.value.serverVersion)
+        } else {
+          // storedIdが無効だった場合のみ再チェック
+          const updateResult = await window.api.checkModpackUpdateById(effectiveId)
+          setUpdateAvailable(updateResult.hasUpdate)
+          setServerVersion(updateResult.serverVersion)
+        }
       }
     }
     init()
@@ -165,6 +179,13 @@ export default function HomeView({
       setLaunchStatus('error')
     }
     setTimeout(() => { if (launchStatus !== 'running') setLaunchStatus('idle') }, 3000)
+  }
+
+  const handleForceKill = async () => {
+    const result = await window.api.killMinecraft()
+    if (!result.success) {
+      setStatusMessage(`強制終了エラー: ${result.error}`)
+    }
   }
 
   const handleLaunch = async () => {
@@ -376,30 +397,33 @@ export default function HomeView({
             </div>
           </button>
 
-          {/* Launch button */}
-          <button onClick={handleLaunch}
-            disabled={isLaunching || launchStatus === 'running' || updateAvailable || !mcUsername}
-            className={`w-full flex items-center justify-center gap-3 rounded-xl py-4 text-base font-bold transition-all select-none ${
-              launchStatus === 'running'
-                ? 'bg-green-800/80 cursor-not-allowed'
-                : isLaunching
+          {/* Launch / Force-kill button */}
+          {launchStatus === 'running' ? (
+            <button onClick={handleForceKill}
+              className="w-full flex items-center justify-center gap-3 rounded-xl py-4 text-base font-bold transition-all select-none bg-red-600 hover:bg-red-500 active:scale-[0.985] shadow-lg shadow-red-950/60">
+              <Square size={18} fill="currentColor" />強制終了
+            </button>
+          ) : (
+            <button onClick={handleLaunch}
+              disabled={isLaunching || updateAvailable || !mcUsername}
+              className={`w-full flex items-center justify-center gap-3 rounded-xl py-4 text-base font-bold transition-all select-none ${
+                isLaunching
                   ? 'bg-green-800/60 cursor-not-allowed'
                   : updateAvailable || !mcUsername
                     ? 'bg-[#1a1a2e] border border-white/8 text-gray-500 cursor-not-allowed'
                     : 'bg-green-600 hover:bg-green-500 active:scale-[0.985] shadow-lg shadow-green-950/60'
-            }`}>
-            {isLaunching ? (
-              <><RefreshCw size={18} className="animate-spin" />{statusMessage || '処理中...'}</>
-            ) : launchStatus === 'running' ? (
-              <><Gamepad2 size={18} />プレイ中...</>
-            ) : updateAvailable ? (
-              <><AlertTriangle size={18} />先に更新してください</>
-            ) : !mcUsername ? (
-              <><User size={18} />マイページからMicrosoftアカウントを連携してください</>
-            ) : (
-              <><Play size={18} fill="currentColor" />Minecraft を起動する</>
-            )}
-          </button>
+              }`}>
+              {isLaunching ? (
+                <><RefreshCw size={18} className="animate-spin" />{statusMessage || '処理中...'}</>
+              ) : updateAvailable ? (
+                <><AlertTriangle size={18} />先に更新してください</>
+              ) : !mcUsername ? (
+                <><User size={18} />マイページからMicrosoftアカウントを連携してください</>
+              ) : (
+                <><Play size={18} fill="currentColor" />Minecraft を起動する</>
+              )}
+            </button>
+          )}
 
           {/* Progress bar */}
           {(launchStatus === 'updating' && progress > 0) && (

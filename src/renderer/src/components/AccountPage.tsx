@@ -1,9 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   User, Mail, Shield, Calendar, Camera, Trash2, CheckCircle, Loader2,
-  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus
+  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Shirt, Upload, RefreshCw
 } from 'lucide-react'
-import { LauncherAccount } from '../types'
+import { LauncherAccount, MinecraftProfile } from '../types'
 
 interface AccountPageProps {
   account: LauncherAccount
@@ -23,9 +23,77 @@ export default function AccountPage({
   const [linkLoading, setLinkLoading] = useState(false)
   const [mcidInput, setMcidInput] = useState('')
   const [wlLoading, setWlLoading] = useState(false)
+  const [mcProfile, setMcProfile] = useState<MinecraftProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const profileLoadingRef = useRef(false)
+  const [retryMsg, setRetryMsg] = useState(false)
+  const [skinVariant, setSkinVariant] = useState<'classic' | 'slim'>('classic')
+  const [skinLoading, setSkinLoading] = useState(false)
+  const [capeLoading, setCapeLoading] = useState(false)
+  const [skinPreviewUrl, setSkinPreviewUrl] = useState<string | null>(null)
 
   const ok = (msg: string) => { setStatus({ msg, type: 'ok' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 3000) }
   const err = (msg: string) => { setStatus({ msg, type: 'error' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 4000) }
+
+  const loadProfile = async () => {
+    if (profileLoadingRef.current) {
+      setRetryMsg(true)
+      setTimeout(() => setRetryMsg(false), 3000)
+      return
+    }
+    profileLoadingRef.current = true
+    setProfileLoading(true)
+    setSkinPreviewUrl(null)
+    try {
+      const res = await window.api.getMinecraftProfile()
+      if (res.success && res.data) {
+        setMcProfile(res.data)
+        const activeSkin = res.data.skins?.find(s => s.state === 'ACTIVE')
+        if (activeSkin) {
+          setSkinVariant(activeSkin.variant === 'SLIM' ? 'slim' : 'classic')
+          const imgRes = await window.api.fetchImageDataUrl(activeSkin.url)
+          setSkinPreviewUrl(imgRes.success && imgRes.dataUrl ? imgRes.dataUrl : '')
+        } else {
+          setSkinPreviewUrl('')
+        }
+      } else {
+        setSkinPreviewUrl('')
+      }
+    } finally {
+      setProfileLoading(false)
+      profileLoadingRef.current = false
+    }
+  }
+
+  const handleSkinUpload = async () => {
+    const filePath = await window.api.selectFile([{ name: 'PNGスキン', extensions: ['png'] }])
+    if (!filePath) return
+    setSkinLoading(true)
+    const res = await window.api.uploadSkin(filePath, skinVariant)
+    setSkinLoading(false)
+    if (res.success) {
+      ok('スキンを変更しました')
+      await loadProfile()
+    } else {
+      err(res.error || 'スキンの変更に失敗しました')
+    }
+  }
+
+  const handleCapeSet = async (capeId: string | null) => {
+    setCapeLoading(true)
+    const res = await window.api.setCape(capeId)
+    setCapeLoading(false)
+    if (res.success) {
+      ok(capeId ? 'マントを変更しました' : 'マントをはずしました')
+      await loadProfile()
+    } else {
+      err(res.error || 'マントの変更に失敗しました')
+    }
+  }
+
+  useEffect(() => {
+    if (account.linkedMicrosoft) loadProfile()
+  }, [])
 
   const handleAvatarSelect = async () => {
     const filePath = await window.api.selectFile([{ name: '画像', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] }])
@@ -266,6 +334,143 @@ export default function AccountPage({
             </div>
           )}
         </div>
+
+        {/* ── スキン・マント管理 ── */}
+        {account.linkedMicrosoft && (
+          <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
+            <h3 className="mb-4 text-sm font-semibold text-gray-300 flex items-center gap-2">
+              <Shirt size={14} />
+              スキン・マント管理
+            </h3>
+
+            {profileLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <Loader2 size={14} className="animate-spin" />
+                読み込み中...
+              </div>
+            ) : mcProfile ? (
+              <div className="flex flex-col gap-4">
+                {/* スキン */}
+                <div className="flex gap-4 items-center">
+                  <div className="flex-shrink-0 flex flex-col items-center gap-1">
+                    {skinPreviewUrl === null ? (
+                      <div className="w-16 h-16 rounded bg-white/5 border border-white/10 flex items-center justify-center">
+                        <Loader2 size={14} className="text-gray-600 animate-spin" />
+                      </div>
+                    ) : skinPreviewUrl ? (
+                      <div
+                        style={{
+                          width: 64, height: 64,
+                          backgroundImage: `url(${skinPreviewUrl})`,
+                          backgroundSize: '512px 512px',
+                          backgroundPosition: '-64px -64px',
+                          imageRendering: 'pixelated',
+                          flexShrink: 0
+                        }}
+                        title="スキンプレビュー（顔）"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded bg-white/5 border border-white/10 flex items-center justify-center">
+                        <Shirt size={20} className="text-gray-700" />
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-600">プレビュー</p>
+                  </div>
+                  <div className="flex-1 flex flex-col gap-3">
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1.5">モデル</p>
+                      <div className="flex gap-2">
+                        {(['classic', 'slim'] as const).map(v => (
+                          <button
+                            key={v}
+                            onClick={() => setSkinVariant(v)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                              skinVariant === v
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-[#0d0d14] border border-white/10 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            {v === 'classic' ? 'クラシック (Steve)' : 'スリム (Alex)'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleSkinUpload}
+                      disabled={skinLoading}
+                      className="flex items-center gap-2 rounded-lg bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 disabled:opacity-50 px-4 py-2 text-sm text-blue-300 transition-colors w-fit"
+                    >
+                      {skinLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                      {skinLoading ? 'アップロード中...' : 'スキンを変更'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* マント */}
+                <div className="pt-3 border-t border-white/5">
+                  <p className="text-xs text-gray-500 mb-2">マント</p>
+                  {mcProfile.capes && mcProfile.capes.length > 0 ? (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {mcProfile.capes.map(cape => (
+                          <button
+                            key={cape.id}
+                            onClick={() => handleCapeSet(cape.state === 'ACTIVE' ? null : cape.id)}
+                            disabled={capeLoading}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50 ${
+                              cape.state === 'ACTIVE'
+                                ? 'bg-green-600/20 border border-green-500/30 text-green-300'
+                                : 'bg-[#0d0d14] border border-white/10 text-gray-400 hover:text-white'
+                            }`}
+                          >
+                            {capeLoading ? <Loader2 size={11} className="animate-spin" /> : null}
+                            {cape.alias}
+                            {cape.state === 'ACTIVE' && <CheckCircle size={11} />}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-gray-600 mt-1.5">アクティブなマントをクリックするとはずせます</p>
+                    </>
+                  ) : (
+                    <p className="text-xs text-gray-600">所持しているマントはありません</p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    onClick={loadProfile}
+                    disabled={profileLoading}
+                    className="flex items-center gap-1.5 text-[11px] text-gray-600 hover:text-gray-400 disabled:opacity-40 transition-colors"
+                  >
+                    {profileLoading ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                    更新
+                  </button>
+                  {retryMsg && (
+                    <span className="text-[11px] text-yellow-500 animate-pulse">
+                      読み込み中です。しばらく待ってから試してね
+                    </span>
+                  )}
+                  {!profileLoading && skinPreviewUrl === '' && !retryMsg && (
+                    <span className="text-[11px] text-gray-600">
+                      プレビューを取得できませんでした。「更新」で再試行できます
+                    </span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <p className="text-xs text-gray-500">スキン情報を読み込めませんでした</p>
+                <button
+                  onClick={loadProfile}
+                  className="flex items-center gap-2 rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors w-fit"
+                >
+                  <RefreshCw size={12} />
+                  再読み込み
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── Account details ── */}
         <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">

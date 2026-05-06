@@ -15,6 +15,7 @@ const api = {
   fetchNews: () => ipcRenderer.invoke('fetch-news'),
   updateModpack: (modpackDir: string) => ipcRenderer.invoke('update-modpack', modpackDir),
   launchMinecraft: (options: unknown) => ipcRenderer.invoke('launch-minecraft', options),
+  killMinecraft: () => ipcRenderer.invoke('kill-minecraft'),
   selectDirectory: () => ipcRenderer.invoke('select-directory'),
   selectFile: (filters?: { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('select-file', filters),
@@ -91,6 +92,13 @@ const api = {
 
   // アバター / アイコン用：画像→DataURL
   readImageAsDataUrl: (filePath: string) => ipcRenderer.invoke('read-image-as-data-url', filePath),
+
+  fetchImageDataUrl: (url: string) => ipcRenderer.invoke('fetch-image-dataurl', url),
+
+  // Minecraft スキン・マント管理
+  getMinecraftProfile: () => ipcRenderer.invoke('get-minecraft-profile'),
+  uploadSkin: (filePath: string, variant: 'classic' | 'slim') => ipcRenderer.invoke('upload-skin', filePath, variant),
+  setCape: (capeId: string | null) => ipcRenderer.invoke('set-cape', capeId),
 
   // アップデート機能
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

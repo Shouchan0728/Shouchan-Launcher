@@ -46,10 +46,14 @@ export default function App(): React.JSX.Element {
 
   useEffect(() => {
     const init = async () => {
-      const version = await window.api.getAppVersion()
-      setAppVersion(version)
+      // バージョンとアカウントを並列取得
+      const [version, accountRaw] = await Promise.all([
+        window.api.getAppVersion(),
+        window.api.getStore('launcherAccount')
+      ])
+      setAppVersion(version as string)
 
-      const account = (await window.api.getStore('launcherAccount')) as LauncherAccount | null
+      const account = accountRaw as LauncherAccount | null
       if (!account) {
         const setupCompleted = await window.api.getStore('setupCompleted')
         setAppState(setupCompleted ? 'login' : 'setup')
@@ -57,32 +61,44 @@ export default function App(): React.JSX.Element {
       }
       setLauncherAccount(account)
 
-      const tokenRes = await window.api.accountVerifyToken()
-      const currentAccount: typeof account = tokenRes.success && tokenRes.role
-        ? { ...account, role: tokenRes.role }
-        : account
-      if (tokenRes.success && tokenRes.role !== account.role) {
-        setLauncherAccount(currentAccount)
-        await window.api.setStore('launcherAccount', currentAccount)
-      }
+      // mc.auth・統計をすべて並列取得（トークン検証を待たない）
+      const [mcAuthRaw, launchesRaw, playTimeRaw, lastLaunchRaw, modpackVersionRaw] = await Promise.all([
+        window.api.getStore('mc.auth'),
+        window.api.getStore('stats.launches'),
+        window.api.getStore('stats.playTimeMinutes'),
+        window.api.getStore('stats.lastLaunch'),
+        window.api.getStore('modpack.version')
+      ])
+      const mcAuth = mcAuthRaw as { name: string; isOffline: boolean } | null
 
-      const mcAuth = (await window.api.getStore('mc.auth')) as { name: string; isOffline: boolean } | null
-      if (!mcAuth && currentAccount.role === 'player') {
+      if (!mcAuth && account.role === 'player') {
         setAppState('reauth')
         return
       }
       if (mcAuth?.name) {
         setMcUsername(mcAuth.name)
-      } else if (currentAccount.linkedMicrosoft?.name) {
-        setMcUsername(currentAccount.linkedMicrosoft.name)
+      } else if (account.linkedMicrosoft?.name) {
+        setMcUsername(account.linkedMicrosoft.name)
       }
 
-      const launches = ((await window.api.getStore('stats.launches')) as number) || 0
-      const playTime = ((await window.api.getStore('stats.playTimeMinutes')) as number) || 0
-      const lastLaunch = (await window.api.getStore('stats.lastLaunch')) as string | undefined
-      const modpackVersion = (await window.api.getStore('modpack.version')) as string | undefined
-      setStats({ launches, playTimeMinutes: playTime, lastLaunch, modpackVersion })
+      setStats({
+        launches: ((launchesRaw as number) || 0),
+        playTimeMinutes: ((playTimeRaw as number) || 0),
+        lastLaunch: lastLaunchRaw as string | undefined,
+        modpackVersion: modpackVersionRaw as string | undefined
+      })
+
+      // キャッシュデータでUIをすぐに表示
       setAppState('main')
+
+      // トークン検証はバックグラウンドで実行（UIをブロックしない）
+      window.api.accountVerifyToken().then((tokenRes) => {
+        if (tokenRes.success && tokenRes.role && tokenRes.role !== account.role) {
+          const updated = { ...account, role: tokenRes.role }
+          setLauncherAccount(updated)
+          window.api.setStore('launcherAccount', updated)
+        }
+      }).catch(() => {})
     }
     init()
   }, [])
