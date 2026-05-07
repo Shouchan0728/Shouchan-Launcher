@@ -79,6 +79,10 @@ const api = {
   clearCache: (type: 'versions' | 'libraries' | 'all') => ipcRenderer.invoke('clear-cache', type),
 
   // 汎用パス操作 / 外部リンク
+  listScreenshots: (instanceDir: string) => ipcRenderer.invoke('list-screenshots', instanceDir),
+  copyFileToDir: (srcPath: string, destDir: string) => ipcRenderer.invoke('copy-file-to-dir', srcPath, destDir),
+  hideInstanceFiles: (instanceDir: string) => ipcRenderer.invoke('hide-instance-files', instanceDir),
+  ensureUserFolders: (instanceDir: string, userdataDir: string) => ipcRenderer.invoke('ensure-user-folders', instanceDir, userdataDir),
   openPath: (target: string) => ipcRenderer.invoke('open-path', target),
   openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   saveLogFile: (content: string) => ipcRenderer.invoke('save-log-file', content),

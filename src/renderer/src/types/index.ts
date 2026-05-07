@@ -197,6 +197,10 @@ declare global {
 
       clearCache: (type: 'versions' | 'libraries' | 'all') => Promise<{ success: boolean; cleared?: string[]; error?: string }>
 
+      listScreenshots: (instanceDir: string) => Promise<{ success: boolean; files: { name: string; path: string; mtime: string }[]; error?: string }>
+      copyFileToDir: (srcPath: string, destDir: string) => Promise<{ success: boolean; filename?: string; error?: string }>
+      hideInstanceFiles: (instanceDir: string) => Promise<{ success: boolean }>
+      ensureUserFolders: (instanceDir: string, userdataDir: string) => Promise<{ success: boolean }>
       openPath: (target: string) => Promise<{ success: boolean; error?: string }>
       openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
       saveLogFile: (content: string) => Promise<{ success: boolean; error?: string }>

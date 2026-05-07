@@ -119,6 +119,95 @@ interface MojangVersionJson {
 
 const normalizePath = (p: string): string => p.replace(/\\/g, '/').replace(/^\/+/, '')
 
+// ── インスタンス/ユーザーデータ分離ユーティリティ ────────────────────────────────
+const USER_FOLDERS = ['resourcepacks', 'schematics', 'shaderpacks', 'saves', 'screenshots']
+const ATTRIB_EXE = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'attrib.exe')
+
+// config内で保護する特定ファイル/フォルダ
+const CONFIG_PROTECTED = ['fancymenu', 'customclientbrand.json', 'phases-discord-rich-presence.json']
+
+// instanceDir内のユーザーフォルダをuserdataDirへジャンクションリンクで接続
+const ensureUserFolders = (instanceDir: string, userdataDir: string): void => {
+  fs.mkdirSync(instanceDir, { recursive: true })
+  fs.mkdirSync(userdataDir, { recursive: true })
+  for (const folder of USER_FOLDERS) {
+    const userdataPath = path.join(userdataDir, folder)
+    const instanceLinkPath = path.join(instanceDir, folder)
+    fs.mkdirSync(userdataPath, { recursive: true })
+    if (fs.existsSync(instanceLinkPath)) {
+      const stat = fs.lstatSync(instanceLinkPath)
+      if (stat.isSymbolicLink()) continue // 既にジャンクション
+      try {
+        for (const item of fs.readdirSync(instanceLinkPath)) {
+          const src = path.join(instanceLinkPath, item)
+          const dest = path.join(userdataPath, item)
+          if (!fs.existsSync(dest)) fs.renameSync(src, dest)
+        }
+        fs.rmdirSync(instanceLinkPath)
+      } catch { continue }
+    }
+    try {
+      fs.symlinkSync(userdataPath, instanceLinkPath, 'junction')
+    } catch { /* ignore */ }
+  }
+}
+
+// config内の特定ファイル/フォルダのみ保護（隠し＋読み取り専用）
+const protectConfigFiles = (configDir: string): void => {
+  if (!fs.existsSync(configDir)) return
+  for (const item of CONFIG_PROTECTED) {
+    const fullPath = path.join(configDir, item)
+    if (fs.existsSync(fullPath)) {
+      spawnSync(ATTRIB_EXE, ['+h', '+r', fullPath, '/s', '/d'], { windowsHide: true })
+    }
+  }
+}
+
+// instancesDirを隠し+書き込み禁止（ジャンクション・configはスキップ）
+const hideInstanceFiles = (instanceDir: string): void => {
+  if (!fs.existsSync(instanceDir) || process.platform !== 'win32') return
+  try {
+    for (const item of fs.readdirSync(instanceDir)) {
+      const fullPath = path.join(instanceDir, item)
+      if (fs.lstatSync(fullPath).isSymbolicLink()) continue // ジャンクションはスキップ
+      if (item.toLowerCase() === 'config') {
+        // configは見せる。中の特定ファイルのみ保護
+        spawnSync(ATTRIB_EXE, ['-h', '-r', fullPath], { windowsHide: true })
+        protectConfigFiles(fullPath)
+      } else {
+        spawnSync(ATTRIB_EXE, ['+h', '+r', fullPath, '/s', '/d'], { windowsHide: true })
+      }
+    }
+    // instanceDir自体と親のinstancesフォルダも隠す
+    spawnSync(ATTRIB_EXE, ['+h', instanceDir], { windowsHide: true })
+    spawnSync(ATTRIB_EXE, ['+h', path.dirname(instanceDir)], { windowsHide: true })
+  } catch { /* 失敗しても起動を妨げない */ }
+}
+
+const removeReadOnlyRecursive = (targetPath: string): void => {
+  if (!fs.existsSync(targetPath)) return
+  try {
+    const stat = fs.lstatSync(targetPath)
+    if (stat.isSymbolicLink()) return
+    fs.chmodSync(targetPath, stat.isDirectory() ? 0o777 : 0o666)
+    if (stat.isDirectory()) {
+      for (const item of fs.readdirSync(targetPath)) {
+        removeReadOnlyRecursive(path.join(targetPath, item))
+      }
+    }
+  } catch { /* ignore */ }
+}
+
+const unprotectInstanceFiles = (instanceDir: string): void => {
+  if (!fs.existsSync(instanceDir)) return
+  // fs.chmodで再帰的に読み取り専用を解除（attribより確実）
+  removeReadOnlyRecursive(instanceDir)
+  // 隠し属性もattribで解除
+  if (process.platform === 'win32') {
+    spawnSync(ATTRIB_EXE, ['-h', '-r', instanceDir, '/s', '/d'], { windowsHide: true })
+  }
+}
+
 // Parallel download helper (limit concurrent connections while running in parallel)
 const parallelForEach = async <T>(
   items: T[],
@@ -1877,6 +1966,37 @@ ipcMain.handle('select-file', async (_e, filters?: Electron.FileFilter[]) => {
 ipcMain.handle('get-app-version', () => app.getVersion())
 
 // ── パス / 外部アクセス系 ───────────────────────────────────────────────────
+ipcMain.handle('copy-file-to-dir', async (_e, srcPath: string, destDir: string) => {
+  try {
+    if (!fs.existsSync(srcPath)) return { success: false, error: 'ファイルが見つかりません' }
+    fs.mkdirSync(destDir, { recursive: true })
+    const filename = path.basename(srcPath)
+    const destPath = path.join(destDir, filename)
+    fs.copyFileSync(srcPath, destPath)
+    return { success: true, filename }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('list-screenshots', async (_e, instanceDir: string) => {
+  try {
+    const screenshotsDir = path.join(instanceDir, 'screenshots')
+    if (!fs.existsSync(screenshotsDir)) return { success: true, files: [] }
+    const files = fs.readdirSync(screenshotsDir)
+      .filter(f => /\.(png|jpg|jpeg)$/i.test(f))
+      .map(f => {
+        const fullPath = path.join(screenshotsDir, f)
+        const stat = fs.statSync(fullPath)
+        return { name: f, path: fullPath, mtime: stat.mtime.toISOString() }
+      })
+      .sort((a, b) => new Date(b.mtime).getTime() - new Date(a.mtime).getTime())
+    return { success: true, files }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message, files: [] }
+  }
+})
+
 ipcMain.handle('open-path', async (_e, target: string) => {
   try {
     if (!target) return { success: false, error: 'パスが空です' }
@@ -2266,6 +2386,7 @@ ipcMain.handle('check-modpack-update-by-id', async (_e, id: string) => {
 })
 
 ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: string) => {
+  unprotectInstanceFiles(modpackDir)
   try {
     const res = await axios.get(modpackFilesUrl(id), { timeout: 30000 })
     const files: ManifestFileEntry[] = res.data
@@ -2286,6 +2407,11 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
       }
 
       try {
+        // 書き込み前に読み取り専用を確実に解除
+        if (fs.existsSync(filePath)) {
+          spawnSync(ATTRIB_EXE, ['-r', '-h', filePath], { windowsHide: true })
+          try { fs.chmodSync(filePath, 0o666) } catch { /* ignore */ }
+        }
         const fileRes = await axios.get(resolveManifestUrl(id, file), { responseType: 'arraybuffer', timeout: 120000 })
         fs.writeFileSync(filePath, Buffer.from(fileRes.data))
       } catch (fileErr: unknown) {
@@ -2307,6 +2433,10 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
     } catch {
       store.set(`modpack.versions.${id}`, (res.headers['x-modpack-version'] as string) || 'unknown')
     }
+    // userdata dir = gameDir/userdata/{modpackName}
+    const userdataDir = path.join(path.dirname(path.dirname(modpackDir)), 'userdata', path.basename(modpackDir))
+    ensureUserFolders(modpackDir, userdataDir)
+    hideInstanceFiles(modpackDir)
     return { success: true }
   } catch (err: unknown) {
     const status = (err as { response?: { status?: number } }).response?.status
@@ -2315,6 +2445,16 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
     }
     return { success: false, error: (err as Error).message }
   }
+})
+
+ipcMain.handle('hide-instance-files', (_e, instanceDir: string) => {
+  hideInstanceFiles(instanceDir)
+  return { success: true }
+})
+
+ipcMain.handle('ensure-user-folders', (_e, instanceDir: string, userdataDir: string) => {
+  ensureUserFolders(instanceDir, userdataDir)
+  return { success: true }
 })
 
 // ── 開発者 ModPack CRUD ─────────────────────────────────────────────────────

@@ -3,6 +3,8 @@ import {
   Play,
   RefreshCw,
   Globe,
+  Upload,
+  Camera,
   LogOut,
   CheckCircle,
   Clock,
@@ -16,7 +18,11 @@ import {
   FolderOpen,
   Info,
   Square,
-  ListPlus
+  ListPlus,
+  Layers,
+  ImageOff,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react'
 import { LauncherAccount, Stats, NewsItem, LaunchStatus, ServerModpack } from '../types'
 
@@ -88,6 +94,12 @@ export default function HomeView({
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [serverVersion, setServerVersion] = useState<string | null>(null)
   const [showModpackModal, setShowModpackModal] = useState(false)
+  const [showFolderModal, setShowFolderModal] = useState(false)
+  const [folderMsg, setFolderMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const [showSsModal, setShowSsModal] = useState(false)
+  const [ssFiles, setSsFiles] = useState<{ name: string; path: string; mtime: string; dataUrl?: string }[]>([])
+  const [ssLoading, setSsLoading] = useState(false)
+  const [ssSelected, setSsSelected] = useState<number | null>(null)
   const [showSlowStartNotice, setShowSlowStartNotice] = useState(false)
   const [whitelistRegistered, setWhitelistRegistered] = useState<boolean | null>(null)
 
@@ -158,6 +170,14 @@ export default function HomeView({
     const safeName = (modpack.name || modpack.id || 'modpack').replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').trim()
     const base = gameDir.replace(/[\\/]+$/, '')
     return `${base}/instances/${safeName || modpack.id}`
+  }
+
+  const getUserdataDir = async (modpack: ServerModpack) => {
+    const gameDir = ((await window.api.getStore('settings.gameDir')) as string || '').trim()
+    if (!gameDir) return null
+    const safeName = (modpack.name || modpack.id || 'modpack').replace(/[<>:"/\\|?*\x00-\x1F]/g, '-').trim()
+    const base = gameDir.replace(/[\\/]+$/, '')
+    return `${base}/userdata/${safeName || modpack.id}`
   }
 
   const handleSelectModpack = async (id: string) => {
@@ -238,6 +258,9 @@ export default function HomeView({
     if (result.success) {
       setLaunchStatus('running')
       setStatusMessage('ゲームを起動中...')
+      const udDir = await getUserdataDir(selectedModpack)
+      if (udDir) window.api.ensureUserFolders(dir, udDir).catch(() => {})
+      window.api.hideInstanceFiles(dir).catch(() => {})
       const newLaunches = stats.launches + 1
       onStatsUpdate({ launches: newLaunches, lastLaunch: new Date().toISOString() })
       await window.api.setStore('stats.launches', newLaunches)
@@ -403,24 +426,39 @@ export default function HomeView({
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button
-                onClick={async (e) => {
-                  e.stopPropagation()
-                  if (!selectedModpack) return
-                  const dir = await getInstanceDir(selectedModpack)
-                  if (!dir) {
-                    setStatusMessage('設定タブでゲームディレクトリを設定してください')
-                    setLaunchStatus('error')
-                    setTimeout(() => setLaunchStatus('idle'), 3000)
-                    return
-                  }
-                  await window.api.openPath(dir)
-                }}
+                onClick={(e) => { e.stopPropagation(); setShowFolderModal(true) }}
                 disabled={!selectedModpack}
                 className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-black/40 border border-white/8 text-gray-400 hover:text-white hover:border-white/20 disabled:opacity-40 transition-colors"
-                title="インスタンスのゲームディレクトリを開く"
+                title="インスタンスフォルダを管理"
               >
                 <FolderOpen size={10} />
                 フォルダ
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation()
+                  if (!selectedModpack) return
+                  setShowSsModal(true)
+                  setSsLoading(true)
+                  const dir = await getInstanceDir(selectedModpack)
+                  if (!dir) { setSsLoading(false); return }
+                  const res = await window.api.listScreenshots(dir)
+                  const files = res.success ? res.files.map(f => ({ ...f, dataUrl: undefined })) : []
+                  setSsFiles(files)
+                  setSsLoading(false)
+                  // 順次data URLを読み込む
+                  for (let i = 0; i < files.length; i++) {
+                    const r = await window.api.readImageAsDataUrl(files[i].path)
+                    if (r.success && r.dataUrl) {
+                      setSsFiles(prev => prev.map((f, idx) => idx === i ? { ...f, dataUrl: r.dataUrl } : f))
+                    }
+                  }
+                }}
+                disabled={!selectedModpack}
+                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-black/40 border border-white/8 text-gray-400 hover:text-white hover:border-white/20 disabled:opacity-40 transition-colors"
+                title="スクリーンショット"
+              >
+                <Camera size={10} />
               </button>
               <button onClick={(e) => { e.stopPropagation(); handleUpdateModpack() }}
                 disabled={isLaunching || launchStatus === 'running'}
@@ -552,6 +590,160 @@ export default function HomeView({
           </div>
         </div>
       </div>
+
+      {/* ── Screenshots Modal ── */}
+      {showSsModal && selectedModpack && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
+          onClick={() => { if (ssSelected === null) { setShowSsModal(false); setSsFiles([]); setSsSelected(null) } }}>
+
+          {/* フルサイズ表示 */}
+          {ssSelected !== null && ssFiles[ssSelected] && (
+            <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/95"
+              onClick={() => setSsSelected(null)}>
+              <button className="absolute top-4 right-4 text-gray-400 hover:text-white" onClick={() => setSsSelected(null)}><X size={20} /></button>
+              <button
+                className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white disabled:opacity-20"
+                disabled={ssSelected === 0}
+                onClick={(e) => { e.stopPropagation(); setSsSelected(s => (s ?? 0) - 1) }}
+              ><ChevronLeft size={32} /></button>
+              <button
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white disabled:opacity-20"
+                disabled={ssSelected === ssFiles.length - 1}
+                onClick={(e) => { e.stopPropagation(); setSsSelected(s => (s ?? 0) + 1) }}
+              ><ChevronRight size={32} /></button>
+              {ssFiles[ssSelected].dataUrl ? (
+                <img src={ssFiles[ssSelected].dataUrl} alt="" className="max-w-[90vw] max-h-[90vh] rounded-xl shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} />
+              ) : (
+                <div className="text-gray-500 text-sm">読み込み中...</div>
+              )}
+              <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-xs text-gray-500">{ssFiles[ssSelected].name}</p>
+            </div>
+          )}
+
+          {/* ギャラリー */}
+          <div className="w-[680px] max-h-[80vh] rounded-2xl bg-[#13131e] border border-white/10 p-5 shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4 flex-shrink-0">
+              <div>
+                <h3 className="font-bold text-sm flex items-center gap-2"><Camera size={14} className="text-gray-400" />スクリーンショット</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{selectedModpack.name} · {ssFiles.length}枚</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={async () => {
+                    const dir = await getInstanceDir(selectedModpack)
+                    if (dir) await window.api.openPath(`${dir}/screenshots`)
+                  }}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-gray-400 hover:text-white hover:border-white/20 transition-colors"
+                >
+                  <FolderOpen size={11} />Explorerで開く
+                </button>
+                <button onClick={() => { setShowSsModal(false); setSsFiles([]); setSsSelected(null) }} className="text-gray-500 hover:text-white transition-colors"><X size={15} /></button>
+              </div>
+            </div>
+
+            <div className="overflow-y-auto flex-1">
+              {ssLoading ? (
+                <div className="flex items-center justify-center h-40 text-gray-500 text-sm gap-2">
+                  <RefreshCw size={14} className="animate-spin" />読み込み中...
+                </div>
+              ) : ssFiles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-40 text-gray-600 gap-2">
+                  <ImageOff size={28} className="opacity-40" />
+                  <p className="text-sm">スクリーンショットがありません</p>
+                  <p className="text-xs">ゲーム内で F2 を押すと撮影できます</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2">
+                  {ssFiles.map((f, i) => (
+                    <button key={f.path} onClick={() => setSsSelected(i)}
+                      className="relative aspect-video rounded-lg overflow-hidden bg-black/40 border border-white/5 hover:border-white/20 transition-all group">
+                      {f.dataUrl ? (
+                        <img src={f.dataUrl} alt={f.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <RefreshCw size={14} className="animate-spin text-gray-600" />
+                        </div>
+                      )}
+                      <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent px-2 py-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <p className="text-[10px] text-gray-300 truncate">{f.name}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Instance Folder Modal ── */}
+      {showFolderModal && selectedModpack && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => { setShowFolderModal(false); setFolderMsg(null) }}>
+          <div className="w-[420px] rounded-2xl bg-[#13131e] border border-white/10 p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-bold text-sm flex items-center gap-2"><Layers size={14} className="text-gray-400" />フォルダ管理</h3>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{selectedModpack.name}</p>
+              </div>
+              <button onClick={() => { setShowFolderModal(false); setFolderMsg(null) }} className="text-gray-500 hover:text-white transition-colors"><X size={15} /></button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {([
+                { key: 'resourcepacks', label: 'リソースパック', ext: ['zip', 'png'], desc: '.zip / フォルダ' },
+                { key: 'shaderpacks',   label: 'シェーダー',    ext: ['zip'],        desc: '.zip' },
+                { key: 'schematics',    label: 'スキーマティック', ext: ['nbt', 'litematic', 'schematic'], desc: '.litematic / .nbt' },
+              ] as const).map(({ key, label, ext, desc }) => (
+                <div key={key} className="flex items-center gap-3 rounded-xl bg-[#0d0d14] border border-white/5 px-4 py-3">
+                  <FolderOpen size={15} className="text-gray-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{label}</p>
+                    <p className="text-[10px] text-gray-600">{desc}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const filePath = await window.api.selectFile(
+                        ext.map(e => ({ name: e.toUpperCase(), extensions: [e] }))
+                      )
+                      if (!filePath) return
+                      const udDir = await getUserdataDir(selectedModpack)
+                      if (!udDir) return
+                      const res = await window.api.copyFileToDir(filePath, `${udDir}/${key}`)
+                      if (res.success) {
+                        setFolderMsg({ text: `${res.filename} を追加しました`, ok: true })
+                      } else {
+                        setFolderMsg({ text: res.error || '追加に失敗しました', ok: false })
+                      }
+                      setTimeout(() => setFolderMsg(null), 3000)
+                    }}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg bg-blue-600/15 border border-blue-500/25 text-blue-300 hover:bg-blue-600/25 transition-colors"
+                  >
+                    <Upload size={11} />追加
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={async () => {
+                const udDir = await getUserdataDir(selectedModpack)
+                if (udDir) await window.api.openPath(udDir)
+              }}
+              className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
+            >
+              <FolderOpen size={14} />
+              Explorerで開く
+            </button>
+
+            {folderMsg && (
+              <p className={`mt-2 text-xs text-center ${folderMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
+                {folderMsg.text}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── ModPack Selector Modal ── */}
       {showModpackModal && (
