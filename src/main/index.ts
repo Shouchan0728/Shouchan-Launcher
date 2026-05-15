@@ -2092,14 +2092,14 @@ ipcMain.handle('get-launcher-icon', () => {
 })
 
 // ── ユーザーアバター（画像ファイル → base64） ──────────────────────────────
-ipcMain.handle('read-image-as-data-url', async (_e, filePath: string) => {
+ipcMain.handle('read-image-as-data-url', async (_e, filePath: string, maxBytes?: number) => {
   try {
     if (!filePath || !fs.existsSync(filePath)) {
       return { success: false, error: 'ファイルが見つかりません' }
     }
     const stat = fs.statSync(filePath)
-    if (stat.size > 2 * 1024 * 1024) {
-      return { success: false, error: '画像サイズは 2MB 以下にしてください' }
+    if (stat.size > (maxBytes ?? 2 * 1024 * 1024)) {
+      return { success: false, error: '画像サイズが大きすぎます' }
     }
     const ext = path.extname(filePath).toLowerCase()
     const mime =
@@ -2865,6 +2865,66 @@ ipcMain.handle('install-update', async () => {
   if (isDev) return { success: false, error: '開発環境ではアップデートできません' }
   try {
     autoUpdater.quitAndInstall(false, true)
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+// ── クラッシュレポート ────────────────────────────────────────────────────────
+ipcMain.handle('send-crash-report', async (_e, data: {
+  logs: string[]
+  exitCode: number
+  modpackId?: string
+  modpackVersion?: string
+  mcVersion?: string
+  launcherVersion: string
+}) => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string; username?: string; id?: string } | null
+    const payload = {
+      logs: data.logs.join('\n'),
+      exitCode: data.exitCode,
+      modpackId: data.modpackId,
+      modpackVersion: data.modpackVersion,
+      mcVersion: data.mcVersion,
+      launcherVersion: data.launcherVersion,
+      username: account?.username,
+      userId: account?.id,
+      reportedAt: new Date().toISOString()
+    }
+    await axios.post(`${MODPACK_SERVER_URL}/crash-reports`, payload, {
+      headers: account?.token ? { Authorization: `Bearer ${account.token}` } : {},
+      timeout: 15000
+    })
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('dev-get-crash-reports', async () => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインが必要です' }
+    const res = await axios.get(`${MODPACK_SERVER_URL}/admin/crash-reports`, {
+      headers: { Authorization: `Bearer ${account.token}`, 'X-Admin-Token': DEV_ADMIN_TOKEN },
+      timeout: 10000
+    })
+    return res.data
+  } catch (err: unknown) {
+    return { success: false, error: (err as Error).message }
+  }
+})
+
+ipcMain.handle('dev-delete-crash-report', async (_e, id: string) => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインが必要です' }
+    await axios.delete(`${MODPACK_SERVER_URL}/admin/crash-reports/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${account.token}`, 'X-Admin-Token': DEV_ADMIN_TOKEN },
+      timeout: 10000
+    })
     return { success: true }
   } catch (err: unknown) {
     return { success: false, error: (err as Error).message }

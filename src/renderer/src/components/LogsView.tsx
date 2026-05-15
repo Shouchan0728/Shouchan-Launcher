@@ -64,11 +64,20 @@ export default function LogsView({ logs, onClear }: LogsViewProps): React.JSX.El
         {logs.length === 0 ? (
           <p className="text-gray-600">ゲームを起動するとログがここに表示されます...</p>
         ) : (
-          logs.map((log, i) => (
-            <div key={i} className="leading-5 break-all">
-              {log}
-            </div>
-          ))
+          logs.map((log, i) => {
+            const upper = log.toUpperCase()
+            const color =
+              /FATAL|CRASH|EXCEPTION/.test(upper) ? 'text-red-400' :
+              /\bERROR\b/.test(upper) ? 'text-red-300' :
+              /\bWARN\b/.test(upper) ? 'text-yellow-300' :
+              /\bINFO\b/.test(upper) ? 'text-green-400' :
+              'text-gray-400'
+            return (
+              <div key={i} className={`leading-5 break-all ${color}`}>
+                {log}
+              </div>
+            )
+          })
         )}
         <div ref={bottomRef} />
       </div>

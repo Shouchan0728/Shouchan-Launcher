@@ -5,9 +5,9 @@ import {
   Loader2, Gamepad2, User, LogIn, ChevronRight, File, ArrowUp, X,
   Edit2, ImageIcon, Search, Monitor
 } from 'lucide-react'
-import { ServerModpack, ModLoader } from '../types'
+import { ServerModpack, ModLoader, CrashReport } from '../types'
 
-type DevTab = 'modpacks' | 'files' | 'mc-auth' | 'launcher'
+type DevTab = 'modpacks' | 'files' | 'mc-auth' | 'launcher' | 'crashes'
 
 interface ServerFile {
   path: string
@@ -77,6 +77,11 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const [launcherIconPreview, setLauncherIconPreview] = useState('')
   const [launcherIconLoading, setLauncherIconLoading] = useState(false)
 
+  // ── クラッシュレポート ────────────────────────────────────────────────────────
+  const [crashReports, setCrashReports] = useState<CrashReport[]>([])
+  const [crashLoading, setCrashLoading] = useState(false)
+  const [selectedCrash, setSelectedCrash] = useState<CrashReport | null>(null)
+
   const ok = (msg: string) => { setStatus({ msg, type: 'ok' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 4000) }
   const err = (msg: string) => { setStatus({ msg, type: 'error' }); setTimeout(() => setStatus({ msg: '', type: 'idle' }), 5000) }
 
@@ -135,10 +140,33 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     else err(res.error || '配布対象の読み込みに失敗')
   }
 
+  const loadCrashReports = async () => {
+    setCrashLoading(true)
+    try {
+      const res = await window.api.devGetCrashReports()
+      if (res.success && Array.isArray(res.data)) setCrashReports(res.data)
+      else err(res.error || 'クラッシュレポートの取得に失敗')
+    } catch (e) {
+      err('クラッシュレポートの取得中にエラーが発生しました')
+    } finally {
+      setCrashLoading(false)
+    }
+  }
+
+  const handleDeleteCrashReport = async (id: string) => {
+    const res = await window.api.devDeleteCrashReport(id)
+    if (res.success) {
+      setCrashReports((prev) => prev.filter((r) => r.id !== id))
+      if (selectedCrash?.id === id) setSelectedCrash(null)
+      ok('削除しました')
+    } else err(res.error || '削除に失敗')
+  }
+
   useEffect(() => {
     if (tab === 'modpacks') loadModpacks()
     if (tab === 'files' && modpacks.length === 0) loadModpacks()
     if (tab === 'launcher') loadLauncherIcon()
+    if (tab === 'crashes') loadCrashReports()
   }, [tab])
 
   // ── ModPack CRUD ──────────────────────────────────────────────────────────────
@@ -384,7 +412,8 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     { id: 'modpacks', label: 'ModPack管理' },
     { id: 'files', label: 'ファイル管理' },
     { id: 'mc-auth', label: 'MCアカウント' },
-    { id: 'launcher', label: 'ランチャー' }
+    { id: 'launcher', label: 'ランチャー' },
+    { id: 'crashes', label: 'クラッシュレポート' }
   ]
 
   return (
@@ -1039,6 +1068,77 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                 </button>
               </div>
               <p className="mt-1.5 text-[11px] text-gray-600">オフラインモードはMicrosoftログイン不要ですが、有料サーバーには参加できません。</p>
+            </div>
+          </div>
+        )}
+
+        {/* ════════ クラッシュレポート ════════ */}
+        {tab === 'crashes' && (
+          <div className="flex gap-4 h-full">
+            {/* 一覧 */}
+            <div className="w-64 flex-shrink-0 flex flex-col gap-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-gray-500 font-semibold uppercase tracking-wide">レポート一覧</span>
+                <button onClick={loadCrashReports} disabled={crashLoading}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40">
+                  <RefreshCw size={11} className={crashLoading ? 'animate-spin' : ''} />
+                </button>
+              </div>
+              {crashLoading && <p className="text-xs text-gray-600">読み込み中...</p>}
+              {!crashLoading && crashReports.length === 0 && (
+                <p className="text-xs text-gray-600">レポートがありません</p>
+              )}
+              {crashReports.map((r) => (
+                <button key={r.id} onClick={() => setSelectedCrash(r)}
+                  className={`w-full text-left rounded-xl p-3 border transition-colors ${
+                    selectedCrash?.id === r.id
+                      ? 'bg-red-500/10 border-red-500/40'
+                      : 'bg-white/3 border-white/5 hover:bg-white/5'
+                  }`}>
+                  <p className="text-xs text-red-300 font-mono font-semibold">code {r.exitCode}</p>
+                  <p className="text-[11px] text-gray-400 truncate mt-0.5">{r.username || '匿名'}</p>
+                  <p className="text-[10px] text-gray-600 mt-0.5">{new Date(r.reportedAt).toLocaleString('ja-JP')}</p>
+                </button>
+              ))}
+            </div>
+
+            {/* 詳細 */}
+            <div className="flex-1 flex flex-col min-h-0">
+              {!selectedCrash ? (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-xs text-gray-600">レポートを選択してください</p>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-white">{selectedCrash.username || '匿名'} のレポート</p>
+                      <p className="text-xs text-gray-500">
+                        終了コード {selectedCrash.exitCode}
+                        {selectedCrash.mcVersion && ` • MC ${selectedCrash.mcVersion}`}
+                        {selectedCrash.modpackVersion && ` • v${selectedCrash.modpackVersion}`}
+                        {` • ランチャー v${selectedCrash.launcherVersion}`}
+                      </p>
+                    </div>
+                    <button onClick={() => handleDeleteCrashReport(selectedCrash.id)}
+                      className="flex items-center gap-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 px-3 py-1.5 text-xs text-red-400 transition-colors">
+                      <Trash2 size={12} />削除
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto rounded-xl bg-[#0a0a10] border border-white/5 p-3 font-mono text-xs">
+                    {selectedCrash.logs.split('\n').map((line, i) => {
+                      const upper = line.toUpperCase()
+                      const color =
+                        /FATAL|CRASH|EXCEPTION/.test(upper) ? 'text-red-400' :
+                        /\bERROR\b/.test(upper) ? 'text-red-300' :
+                        /\bWARN\b/.test(upper) ? 'text-yellow-300' :
+                        /\bINFO\b/.test(upper) ? 'text-green-400' :
+                        'text-gray-400'
+                      return <div key={i} className={`leading-5 break-all ${color}`}>{line}</div>
+                    })}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

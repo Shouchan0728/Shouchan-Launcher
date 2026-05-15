@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import {
   Play,
   RefreshCw,
@@ -97,9 +97,10 @@ export default function HomeView({
   const [showFolderModal, setShowFolderModal] = useState(false)
   const [folderMsg, setFolderMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const [showSsModal, setShowSsModal] = useState(false)
-  const [ssFiles, setSsFiles] = useState<{ name: string; path: string; mtime: string; dataUrl?: string }[]>([])
+  const [ssFiles, setSsFiles] = useState<{ name: string; path: string; mtime: string; dataUrl?: string; error?: boolean }[]>([])
   const [ssLoading, setSsLoading] = useState(false)
   const [ssSelected, setSsSelected] = useState<number | null>(null)
+  const ssLoadGenRef = useRef(0)
   const [showSlowStartNotice, setShowSlowStartNotice] = useState(false)
   const [whitelistRegistered, setWhitelistRegistered] = useState<boolean | null>(null)
 
@@ -438,19 +439,27 @@ export default function HomeView({
                 onClick={async (e) => {
                   e.stopPropagation()
                   if (!selectedModpack) return
+                  const gen = ++ssLoadGenRef.current
+                  setSsSelected(null)
+                  setSsFiles([])
                   setShowSsModal(true)
                   setSsLoading(true)
                   const dir = await getInstanceDir(selectedModpack)
-                  if (!dir) { setSsLoading(false); return }
+                  if (!dir || gen !== ssLoadGenRef.current) { setSsLoading(false); return }
                   const res = await window.api.listScreenshots(dir)
+                  if (gen !== ssLoadGenRef.current) return
                   const files = res.success ? res.files.map(f => ({ ...f, dataUrl: undefined })) : []
                   setSsFiles(files)
                   setSsLoading(false)
                   // 順次data URLを読み込む
                   for (let i = 0; i < files.length; i++) {
-                    const r = await window.api.readImageAsDataUrl(files[i].path)
+                    if (gen !== ssLoadGenRef.current) break
+                    const r = await window.api.readImageAsDataUrl(files[i].path, 20 * 1024 * 1024)
+                    if (gen !== ssLoadGenRef.current) break
                     if (r.success && r.dataUrl) {
                       setSsFiles(prev => prev.map((f, idx) => idx === i ? { ...f, dataUrl: r.dataUrl } : f))
+                    } else {
+                      setSsFiles(prev => prev.map((f, idx) => idx === i ? { ...f, error: true } : f))
                     }
                   }
                 }}
@@ -594,11 +603,11 @@ export default function HomeView({
       {/* ── Screenshots Modal ── */}
       {showSsModal && selectedModpack && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
-          onClick={() => { if (ssSelected === null) { setShowSsModal(false); setSsFiles([]); setSsSelected(null) } }}>
+          onClick={() => { if (ssSelected === null) { ssLoadGenRef.current++; setShowSsModal(false); setSsFiles([]) } }}>
 
           {/* フルサイズ表示 */}
           {ssSelected !== null && ssFiles[ssSelected] && (
-            <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/95"
+            <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95"
               onClick={() => setSsSelected(null)}>
               <button className="absolute top-4 right-4 text-gray-400 hover:text-white" onClick={() => setSsSelected(null)}><X size={20} /></button>
               <button
@@ -638,7 +647,7 @@ export default function HomeView({
                 >
                   <FolderOpen size={11} />Explorerで開く
                 </button>
-                <button onClick={() => { setShowSsModal(false); setSsFiles([]); setSsSelected(null) }} className="text-gray-500 hover:text-white transition-colors"><X size={15} /></button>
+                <button onClick={() => { ssLoadGenRef.current++; setShowSsModal(false); setSsFiles([]); setSsSelected(null) }} className="text-gray-500 hover:text-white transition-colors"><X size={15} /></button>
               </div>
             </div>
 
@@ -660,6 +669,10 @@ export default function HomeView({
                       className="relative aspect-video rounded-lg overflow-hidden bg-black/40 border border-white/5 hover:border-white/20 transition-all group">
                       {f.dataUrl ? (
                         <img src={f.dataUrl} alt={f.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                      ) : f.error ? (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageOff size={14} className="text-gray-600" />
+                        </div>
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <RefreshCw size={14} className="animate-spin text-gray-600" />

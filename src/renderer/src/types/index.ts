@@ -110,6 +110,19 @@ export interface MinecraftProfile {
   capes: MinecraftCape[]
 }
 
+export interface CrashReport {
+  id: string
+  logs: string
+  exitCode: number
+  modpackId?: string
+  modpackVersion?: string
+  mcVersion?: string
+  launcherVersion: string
+  username?: string
+  userId?: string
+  reportedAt: string
+}
+
 export type LaunchStatus = 'idle' | 'updating' | 'launching' | 'running' | 'error'
 export type ViewType = 'home' | 'settings' | 'logs' | 'developer' | 'account'
 export type AppState = 'loading' | 'setup' | 'login' | 'reauth' | 'main'
@@ -152,6 +165,19 @@ declare global {
       fetchModpackInfo: () => Promise<{ success: boolean; data?: ModpackInfo; error?: string }>
       fetchNews: () => Promise<{ success: boolean; data?: NewsItem[]; error?: string }>
       updateModpack: (dir: string) => Promise<{ success: boolean; error?: string }>
+      devGetNews: () => Promise<{ success: boolean; data?: unknown; error?: string }>
+      devUpdateNews: (news: unknown) => Promise<{ success: boolean; error?: string }>
+
+      sendCrashReport: (data: {
+        logs: string[]
+        exitCode: number
+        modpackId?: string
+        modpackVersion?: string
+        mcVersion?: string
+        launcherVersion: string
+      }) => Promise<{ success: boolean; error?: string }>
+      devGetCrashReports: () => Promise<{ success: boolean; data?: CrashReport[]; error?: string }>
+      devDeleteCrashReport: (id: string) => Promise<{ success: boolean; error?: string }>
       launchMinecraft: (options: LaunchMinecraftOptions) => Promise<{ success: boolean; error?: string }>
       killMinecraft: () => Promise<{ success: boolean; error?: string }>
       selectDirectory: () => Promise<string | null>
@@ -212,7 +238,7 @@ declare global {
       resetLauncherIcon: () => Promise<{ success: boolean; error?: string }>
       getLauncherIcon: () => Promise<{ success: boolean; iconPath: string | null }>
 
-      readImageAsDataUrl: (filePath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
+      readImageAsDataUrl: (filePath: string, maxBytes?: number) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
 
       fetchImageDataUrl: (url: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
       getMinecraftProfile: () => Promise<{ success: boolean; data?: MinecraftProfile; error?: string }>

@@ -9,6 +9,7 @@ import DeveloperMenu from './components/DeveloperMenu'
 import LoginScreen from './components/LoginScreen'
 import UpdateNotifier from './components/UpdateNotifier'
 import AccountPage from './components/AccountPage'
+import CrashReportDialog from './components/CrashReportDialog'
 import { ViewType, LauncherAccount, Stats, AppState, LaunchStatus, UpdateState } from './types'
 import { RefreshCw, X } from 'lucide-react'
 
@@ -23,6 +24,7 @@ export default function App(): React.JSX.Element {
   const [reauthError, setReauthError] = useState('')
   const [launchStatus, setLaunchStatus] = useState<LaunchStatus>('idle')
   const [launcherIconUrl, setLauncherIconUrl] = useState('')
+  const [crashData, setCrashData] = useState<{ logs: string[]; exitCode: number } | null>(null)
 
   // アップデート状態
   const [updateState, setUpdateState] = useState<UpdateState>({
@@ -111,8 +113,14 @@ export default function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    const cleanup = window.api.onGameClosed(({ addedMinutes }) => {
+    const cleanup = window.api.onGameClosed(({ code, addedMinutes }) => {
       setLaunchStatus('idle')
+      if (code !== 0 && code !== null) {
+        setLogs((prev) => {
+          setCrashData({ logs: prev, exitCode: code })
+          return prev
+        })
+      }
       if (addedMinutes > 0) {
         setStats((prev) => {
           const newTotal = prev.playTimeMinutes + addedMinutes
@@ -254,6 +262,16 @@ export default function App(): React.JSX.Element {
 
   return (
     <div className="flex h-screen w-screen flex-col bg-[#111117] text-white overflow-hidden">
+      {crashData && (
+        <CrashReportDialog
+          logs={crashData.logs}
+          exitCode={crashData.exitCode}
+          launcherVersion={appVersion}
+          modpackVersion={stats.modpackVersion}
+          onClose={() => setCrashData(null)}
+          onViewLogs={() => { setCrashData(null); setView('logs') }}
+        />
+      )}
       <TitleBar appVersion={appVersion} launcherAccount={launcherAccount} mcUsername={mcUsername} launcherIconUrl={launcherIconUrl} />
       {showUpdateNotifier && (
         <UpdateNotifier

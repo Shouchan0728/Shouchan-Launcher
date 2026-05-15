@@ -78,6 +78,17 @@ const api = {
 
   clearCache: (type: 'versions' | 'libraries' | 'all') => ipcRenderer.invoke('clear-cache', type),
 
+  sendCrashReport: (data: {
+    logs: string[]
+    exitCode: number
+    modpackId?: string
+    modpackVersion?: string
+    mcVersion?: string
+    launcherVersion: string
+  }) => ipcRenderer.invoke('send-crash-report', data),
+  devGetCrashReports: () => ipcRenderer.invoke('dev-get-crash-reports'),
+  devDeleteCrashReport: (id: string) => ipcRenderer.invoke('dev-delete-crash-report', id),
+
   // 汎用パス操作 / 外部リンク
   listScreenshots: (instanceDir: string) => ipcRenderer.invoke('list-screenshots', instanceDir),
   copyFileToDir: (srcPath: string, destDir: string) => ipcRenderer.invoke('copy-file-to-dir', srcPath, destDir),
@@ -97,7 +108,7 @@ const api = {
   getLauncherIcon: () => ipcRenderer.invoke('get-launcher-icon'),
 
   // アバター / アイコン用：画像→DataURL
-  readImageAsDataUrl: (filePath: string) => ipcRenderer.invoke('read-image-as-data-url', filePath),
+  readImageAsDataUrl: (filePath: string, maxBytes?: number) => ipcRenderer.invoke('read-image-as-data-url', filePath, maxBytes),
 
   fetchImageDataUrl: (url: string) => ipcRenderer.invoke('fetch-image-dataurl', url),
 
