@@ -5,10 +5,12 @@ export interface LauncherAccount {
   role: 'developer' | 'player'
   createdAt: string
   token?: string
-  avatar?: string // data URL（ユーザーアイコン、ローカル保存）
-  linkedMicrosoft?: { name: string; uuid: string } // Shouchanアカウントに紐付けたMicrosoftアカウント
+  avatar?: string // data URL（ユーザーアイコン、サーバ launcher_accounts.avatar と同期）
+  linkedMicrosoft?: { name: string; uuid: string } // mc_name/mc_uuid から派生して保持
   discord_id?: string
   discord_name?: string
+  mc_name?: string | null
+  mc_uuid?: string | null
 }
 
 export interface WhitelistStatus {

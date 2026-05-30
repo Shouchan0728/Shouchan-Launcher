@@ -614,13 +614,22 @@ ipcMain.handle('auth-microsoft', async () => {
     }
     store.set('mc.auth', authData)
 
-    // Shouchanアカウントに紐付けてホワイトリスト自動登録
+    // Shouchanアカウントに紐付けてホワイトリスト自動登録 + ローカルにも mc 情報を反映
     const launcherAccount = store.get('launcherAccount') as { token?: string } | null
     if (launcherAccount?.token) {
       axios.post(`${MODPACK_SERVER_URL}/account/link-minecraft`,
         { mcid: authData.name, uuid: authData.uuid },
         { headers: { Authorization: `Bearer ${launcherAccount.token}` }, timeout: 10000 }
-      ).catch(() => { /* ホワイトリスト登録失敗はエラーにしない */ })
+      ).then((linkRes) => {
+        if (!linkRes.data?.ok) return
+        const current = store.get('launcherAccount') as Record<string, unknown> | null
+        if (!current) return
+        const updated = applyServerAccountExtras(current, {
+          mc_name: authData.name,
+          mc_uuid: linkRes.data.mc_uuid || authData.uuid,
+        })
+        store.set('launcherAccount', updated)
+      }).catch(() => { /* ホワイトリスト登録失敗はエラーにしない */ })
     }
 
     return { success: true, mcUsername: authData.name }
@@ -661,13 +670,22 @@ ipcMain.handle('auth-refresh', async () => {
     }
     store.set('mc.auth', authData)
 
-    // Shouchanアカウントに紐付けてホワイトリスト自動登録
+    // Shouchanアカウントに紐付けてホワイトリスト自動登録 + ローカルにも mc 情報を反映
     const launcherAccountR = store.get('launcherAccount') as { token?: string } | null
     if (launcherAccountR?.token) {
       axios.post(`${MODPACK_SERVER_URL}/account/link-minecraft`,
         { mcid: authData.name, uuid: authData.uuid },
         { headers: { Authorization: `Bearer ${launcherAccountR.token}` }, timeout: 10000 }
-      ).catch(() => { /* ホワイトリスト登録失敗はエラーにしない */ })
+      ).then((linkRes) => {
+        if (!linkRes.data?.ok) return
+        const current = store.get('launcherAccount') as Record<string, unknown> | null
+        if (!current) return
+        const updated = applyServerAccountExtras(current, {
+          mc_name: authData.name,
+          mc_uuid: linkRes.data.mc_uuid || authData.uuid,
+        })
+        store.set('launcherAccount', updated)
+      }).catch(() => { /* ホワイトリスト登録失敗はエラーにしない */ })
     }
 
     return { success: true, mcUsername: authData.name }
@@ -2130,6 +2148,24 @@ const formatAccountApiError = (err: unknown, fallback: string): string => {
   return fallback
 }
 
+// /account/* レスポンスの mc_name/mc_uuid/discord_id/discord_name/avatar をローカルアカウントにマージし、
+// linkedMicrosoft も派生で補完する。サーバが正のため、ローカルストア削除→再ログインでも復元される。
+function applyServerAccountExtras<T extends Record<string, unknown>>(
+  base: T,
+  data: Record<string, unknown>
+): T {
+  const result: Record<string, unknown> = { ...base }
+  if (data.avatar !== undefined) result.avatar = data.avatar
+  const mcName = (data.mc_name as string | null | undefined) ?? null
+  const mcUuid = (data.mc_uuid as string | null | undefined) ?? null
+  if (mcName) result.mc_name = mcName
+  if (mcUuid) result.mc_uuid = mcUuid
+  if (data.discord_id) result.discord_id = data.discord_id
+  if (data.discord_name) result.discord_name = data.discord_name
+  if (mcName && mcUuid) result.linkedMicrosoft = { name: mcName, uuid: mcUuid }
+  return result as T
+}
+
 ipcMain.handle('account-register-start', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
   try {
     const normalizedEmail = email.trim().toLowerCase()
@@ -2149,15 +2185,14 @@ ipcMain.handle('account-register-verify', async (_e, { pendingToken, code }: { p
   try {
     const res = await axios.post(`${MODPACK_SERVER_URL}/account/register/verify`, { pendingToken, code }, { timeout: 10000 })
     const fallbackEmail = (store.get('auth.pendingRegisterEmail') as string) || ''
-    const account = {
+    const account = applyServerAccountExtras({
       id: res.data.id,
       username: res.data.username,
       email: (res.data.email as string) || fallbackEmail,
       role: (res.data.role as 'developer' | 'player') || 'player',
       createdAt: (res.data.createdAt as string) || new Date().toISOString(),
       token: res.data.token,
-      ...(res.data.avatar ? { avatar: res.data.avatar as string } : {})
-    }
+    }, res.data)
     store.set('launcherAccount', account)
     store.delete('auth.pendingRegisterEmail')
     return { success: true, account }
@@ -2181,15 +2216,14 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
   try {
     const res = await axios.post(`${MODPACK_SERVER_URL}/account/login/verify`, { pendingToken, code }, { timeout: 10000 })
     const fallbackEmail = (store.get('auth.pendingLoginEmail') as string) || ''
-    const account = {
+    const account = applyServerAccountExtras({
       id: res.data.id,
       username: res.data.username,
       email: (res.data.email as string) || fallbackEmail,
       role: (res.data.role as 'developer' | 'player') || 'player',
       createdAt: res.data.createdAt,
       token: res.data.token,
-      ...(res.data.avatar ? { avatar: res.data.avatar as string } : {})
-    }
+    }, res.data)
     store.set('launcherAccount', account)
     store.delete('auth.pendingLoginEmail')
     if (res.data.settings) {
@@ -2260,13 +2294,13 @@ ipcMain.handle('account-avatar-sync', async (_e, avatar: string | null) => {
 
 ipcMain.handle('account-verify-token', async () => {
   try {
-    const account = store.get('launcherAccount') as { token?: string; role?: string } | null
+    const account = store.get('launcherAccount') as Record<string, unknown> | null
     if (!account?.token) return { success: false, error: 'No token' }
     const res = await axios.get(`${MODPACK_SERVER_URL}/account/profile`, {
       headers: { Authorization: `Bearer ${account.token}` },
       timeout: 8000
     })
-    const updatedAccount = { ...account, role: res.data.role }
+    const updatedAccount = applyServerAccountExtras({ ...account, role: res.data.role }, res.data)
     store.set('launcherAccount', updatedAccount)
     return { success: true, role: res.data.role as 'developer' | 'player' }
   } catch {
