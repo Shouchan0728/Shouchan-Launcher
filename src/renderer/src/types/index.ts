@@ -234,9 +234,9 @@ declare global {
 
       isLaunchingMinecraft: () => Promise<boolean>
 
-      setLauncherIcon: (sourcePath: string) => Promise<{ success: boolean; iconPath?: string; error?: string }>
+      setLauncherIcon: (sourcePath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
       resetLauncherIcon: () => Promise<{ success: boolean; error?: string }>
-      getLauncherIcon: () => Promise<{ success: boolean; iconPath: string | null }>
+      getLauncherIcon: () => Promise<{ success: boolean; dataUrl: string | null }>
 
       readImageAsDataUrl: (filePath: string, maxBytes?: number) => Promise<{ success: boolean; dataUrl?: string; error?: string }>
 

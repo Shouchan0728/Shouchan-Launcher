@@ -315,18 +315,12 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     } else err(res.error || 'アイコンのアップロードに失敗')
   }
 
-  // ── ランチャーアイコンハンドラ ────────────────────────────────────────────────
+  // ── ランチャーアイコンハンドラ(サーバ launcher_global_settings 経由) ─────────
   const loadLauncherIcon = async () => {
     const res = await window.api.getLauncherIcon()
     if (res.success) {
-      setLauncherIconPath(res.iconPath)
-      if (res.iconPath) {
-        const imgRes = await window.api.readImageAsDataUrl(res.iconPath)
-        if (imgRes.success && imgRes.dataUrl) setLauncherIconPreview(imgRes.dataUrl)
-        else setLauncherIconPreview('')
-      } else {
-        setLauncherIconPreview('')
-      }
+      setLauncherIconPath(res.dataUrl ? 'server' : null)
+      setLauncherIconPreview(res.dataUrl || '')
     }
   }
 
@@ -336,7 +330,15 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     setLauncherIconLoading(true)
     const res = await window.api.setLauncherIcon(localPath)
     setLauncherIconLoading(false)
-    if (res.success) { ok('ランチャーアイコンを変更しました'); loadLauncherIcon(); onLauncherIconChange?.() }
+    if (res.success) {
+      ok('ランチャーアイコンを変更しました(全員に配信)')
+      // setLauncherIcon が返した dataUrl をそのままプレビューに反映(GET 再取得不要)
+      if (res.dataUrl) {
+        setLauncherIconPath('server')
+        setLauncherIconPreview(res.dataUrl)
+      }
+      onLauncherIconChange?.()
+    }
     else err(res.error || 'アイコンの変更に失敗')
   }
 
@@ -345,7 +347,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     const res = await window.api.resetLauncherIcon()
     setLauncherIconLoading(false)
     if (res.success) {
-      ok('ランチャーアイコンをデフォルトに戻しました')
+      ok('ランチャーアイコンをデフォルトに戻しました(全員に反映)')
       setLauncherIconPath(null)
       setLauncherIconPreview('')
       onLauncherIconChange?.()
@@ -1004,11 +1006,11 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-white mb-1">
-                    {launcherIconPath ? 'カスタムアイコン設定済み' : 'デフォルトアイコン使用中'}
+                    {launcherIconPath ? 'カスタムアイコン設定済み(サーバ配信中)' : 'デフォルトアイコン使用中'}
                   </p>
-                  <p className="text-[11px] text-gray-600">PNG または ICO ファイルを使用できます</p>
+                  <p className="text-[11px] text-gray-600">PNG または ICO ファイル(最大5MB)</p>
                   {launcherIconPath && (
-                    <p className="text-[10px] text-gray-700 mt-1 break-all">{launcherIconPath}</p>
+                    <p className="text-[10px] text-gray-700 mt-1">変更すると全ユーザーのランチャーに反映されます</p>
                   )}
                 </div>
               </div>
@@ -1025,7 +1027,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                   </button>
                 )}
               </div>
-              <p className="mt-3 text-[11px] text-gray-600">変更は次回起動時またはウィンドウ再起動時に反映されます</p>
+              <p className="mt-3 text-[11px] text-gray-600">変更は他ユーザーのランチャー次回起動時に反映されます</p>
             </div>
           </div>
         )}

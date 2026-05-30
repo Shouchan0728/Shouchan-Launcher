@@ -2040,11 +2040,25 @@ ipcMain.handle('save-log-file', async (_e, content: string) => {
   }
 })
 
-// ── ランチャーアイコンのカスタマイズ ────────────────────────────────────────
-const getCustomIconPath = (): string | null => {
-  const p = store.get('launcher.customIconPath') as string | undefined
-  if (p && fs.existsSync(p)) return p
-  return null
+// ── ランチャーアイコン(グローバル設定、サーバ launcher_global_settings 経由) ──
+const ICON_MIME_BY_EXT: Record<string, string> = {
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+}
+
+const applyWindowIconFromDataUrl = async (dataUrl: string) => {
+  try {
+    const { nativeImage } = await import('electron')
+    const img = nativeImage.createFromDataURL(dataUrl)
+    if (img.isEmpty()) return
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (!w.isDestroyed()) w.setIcon(img)
+    }
+  } catch {}
 }
 
 ipcMain.handle('set-launcher-icon', async (_e, sourcePath: string) => {
@@ -2052,43 +2066,64 @@ ipcMain.handle('set-launcher-icon', async (_e, sourcePath: string) => {
     if (!sourcePath || !fs.existsSync(sourcePath)) {
       return { success: false, error: 'ファイルが見つかりません' }
     }
-    const ext = path.extname(sourcePath).toLowerCase() || '.png'
-    const destDir = path.join(app.getPath('userData'), 'launcher-icon')
-    fs.mkdirSync(destDir, { recursive: true })
-    const dest = path.join(destDir, `icon${ext}`)
-    // 既存ファイルを上書き
-    fs.copyFileSync(sourcePath, dest)
-    store.set('launcher.customIconPath', dest)
-    // 実行中ウィンドウにも反映
-    try {
-      const { nativeImage } = await import('electron')
-      const imgBuffer = fs.readFileSync(dest)
-      const img = nativeImage.createFromBuffer(imgBuffer)
-      if (!img.isEmpty()) {
-        for (const w of BrowserWindow.getAllWindows()) {
-          if (!w.isDestroyed()) w.setIcon(img)
-        }
-      }
-    } catch {}
-    return { success: true, iconPath: dest }
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインが必要です' }
+    const ext = path.extname(sourcePath).toLowerCase()
+    const mime = ICON_MIME_BY_EXT[ext] || 'image/png'
+    const buffer = fs.readFileSync(sourcePath)
+    const dataUrl = `data:${mime};base64,${buffer.toString('base64')}`
+    await axios.post(`${MODPACK_SERVER_URL}/admin/launcher-icon`, { dataUrl }, {
+      headers: { Authorization: `Bearer ${account.token}` },
+      timeout: 15000,
+    })
+    store.set('launcher.cachedIconDataUrl', dataUrl)
+    await applyWindowIconFromDataUrl(dataUrl)
+    return { success: true, dataUrl }
   } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response) {
+      const data = err.response.data as { error?: string }
+      return { success: false, error: data?.error || `サーバーエラー (${err.response.status})` }
+    }
     return { success: false, error: (err as Error).message }
   }
 })
 
-ipcMain.handle('reset-launcher-icon', () => {
+ipcMain.handle('reset-launcher-icon', async () => {
   try {
-    store.delete('launcher.customIconPath')
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインが必要です' }
+    await axios.delete(`${MODPACK_SERVER_URL}/admin/launcher-icon`, {
+      headers: { Authorization: `Bearer ${account.token}` },
+      timeout: 10000,
+    })
+    store.delete('launcher.cachedIconDataUrl')
     return { success: true }
   } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response) {
+      const data = err.response.data as { error?: string }
+      return { success: false, error: data?.error || `サーバーエラー (${err.response.status})` }
+    }
     return { success: false, error: (err as Error).message }
   }
 })
 
-ipcMain.handle('get-launcher-icon', () => {
-  const p = getCustomIconPath()
-  if (!p) return { success: true, iconPath: null }
-  return { success: true, iconPath: p }
+ipcMain.handle('get-launcher-icon', async () => {
+  try {
+    const res = await axios.get(`${MODPACK_SERVER_URL}/launcher/icon`, { timeout: 8000 })
+    const dataUrl = (res.data?.dataUrl as string | null) || null
+    if (dataUrl) {
+      store.set('launcher.cachedIconDataUrl', dataUrl)
+      // 既存ウィンドウのネイティブアイコンも反映(初回起動・他端末からの更新時)
+      applyWindowIconFromDataUrl(dataUrl).catch(() => {})
+    } else {
+      store.delete('launcher.cachedIconDataUrl')
+    }
+    return { success: true, dataUrl }
+  } catch {
+    // オフライン or サーバ不可: 直近のキャッシュにフォールバック
+    const cached = (store.get('launcher.cachedIconDataUrl') as string | undefined) || null
+    return { success: true, dataUrl: cached }
+  }
 })
 
 // ── ユーザーアバター（画像ファイル → base64） ──────────────────────────────
