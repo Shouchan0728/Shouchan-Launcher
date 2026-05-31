@@ -299,11 +299,11 @@ export default function AccountPage({
           </div>
         </div>
 
-        {/* ── Microsoft link ── */}
+        {/* ── Minecraft account link ── */}
         <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
           <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
             <LinkIcon size={14} />
-            Microsoftアカウント連携
+            Minecraftアカウント連携
           </h3>
 
           {account.linkedMicrosoft ? (
@@ -312,10 +312,13 @@ export default function AccountPage({
                 <Gamepad2 size={16} className="text-green-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white truncate">{account.linkedMicrosoft.name}</p>
-                  <p className="text-xs text-gray-500 truncate">Shouchanアカウントに紐付け済み</p>
+                  <p className="text-xs text-gray-500 truncate">MCID 紐付け済み(ホワリス登録対象)</p>
                 </div>
                 <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
               </div>
+              <p className="text-[11px] text-gray-600">
+                ※ ゲームを起動するには Microsoft アカウントへのログインが別途必要です。
+              </p>
               <button
                 onClick={handleUnlinkMicrosoft}
                 className="flex items-center justify-center gap-2 rounded-lg bg-[#0d0d14] border border-red-500/20 text-red-400 hover:bg-red-500/10 px-4 py-2 text-sm transition-colors"
@@ -327,7 +330,7 @@ export default function AccountPage({
           ) : (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-gray-500">
-                Microsoftアカウントを紐付けると、次回からワンクリックでログインできます。
+                Microsoftアカウントでログインすると、Minecraftアカウントが紐付けされて次回からワンクリック起動できます。
                 {mcUsername && (
                   <span className="block mt-1 text-gray-400">
                     現在のMinecraftアカウント: <span className="text-white">{mcUsername}</span>
@@ -349,7 +352,7 @@ export default function AccountPage({
                       <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
                       <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
                     </svg>
-                    Microsoftアカウントを紐付ける
+                    Microsoftでログイン
                   </>
                 )}
               </button>
