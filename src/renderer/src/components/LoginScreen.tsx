@@ -21,6 +21,7 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
+  const [mcid, setMcid] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -44,9 +45,12 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
       if (!password) { setError('パスワードを入力してください'); return }
       if (password.length < 6) { setError('パスワードは6文字以上で入力してください'); return }
       if (password !== passwordConfirm) { setError('パスワードが一致しません'); return }
+      const mcidTrimmed = mcid.trim()
+      if (!mcidTrimmed) { setError('MCIDを入力してください(統合版は BE_<gamertag>)'); return }
+      if (!/^[A-Za-z0-9_]{3,19}$/.test(mcidTrimmed)) { setError('MCIDは3〜19文字の英数字とアンダースコアで入力してください'); return }
       setLoading(true)
       const res = await window.api.accountRegisterStart({
-        username: username.trim(), email: email.trim(), password
+        username: username.trim(), email: email.trim(), password, mcid: mcidTrimmed
       })
       setLoading(false)
       if (!res.success || !res.pendingToken) { setError(res.error || '認証コード送信に失敗しました'); return }
@@ -188,6 +192,20 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
                   onChange={(e) => { setPasswordConfirm(e.target.value); setError('') }}
                   placeholder="••••••••" className={INPUT}
                 />
+              </div>
+            )}
+            {mode === 'register' && (
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">MCID(Minecraftユーザー名)</label>
+                <input
+                  type="text" value={mcid}
+                  onChange={(e) => { setMcid(e.target.value); setError('') }}
+                  placeholder="Steve または BE_PlayerName" maxLength={19} className={INPUT}
+                />
+                <p className="mt-1 text-[10px] text-gray-600 leading-relaxed">
+                  Java版は通常のMCID、統合版(Bedrock)は <code className="text-sky-400">BE_</code> をゲーマータグの先頭に付けてください。
+                  <br />アカウント作成と同時にホワイトリストへ自動登録されます。
+                </p>
               </div>
             )}
             {error && <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>}
