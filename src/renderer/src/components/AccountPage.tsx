@@ -157,6 +157,27 @@ export default function AccountPage({
     }
   }
 
+  const [discordLoading, setDiscordLoading] = useState(false)
+  const handleLinkDiscord = async () => {
+    setDiscordLoading(true)
+    const res = await window.api.linkDiscord()
+    if (!res.success) {
+      setDiscordLoading(false)
+      err(res.error || 'Discord連携に失敗しました')
+      return
+    }
+    // Discord OAuth は外部ブラウザで完了するため、結果をサーバから再取得して反映
+    await window.api.accountVerifyToken().catch(() => {})
+    const latest = await window.api.getStore('launcherAccount') as LauncherAccount | null
+    setDiscordLoading(false)
+    if (latest?.discord_name) {
+      onAccountChange(latest)
+      ok(`Discord「${latest.discord_name}」を連携しました`)
+    } else {
+      err('Discord連携の確認ができませんでした。ウィンドウを閉じた直後の場合は数秒お待ちください。')
+    }
+  }
+
   const handleRegisterWhitelist = async () => {
     const mcid = mcidInput.trim()
     if (!mcid) return
@@ -353,6 +374,46 @@ export default function AccountPage({
                       <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
                     </svg>
                     Microsoftでログイン
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Discord link ── */}
+        <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
+          <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
+            <LinkIcon size={14} />
+            Discordアカウント連携
+          </h3>
+          {account.discord_name ? (
+            <div className="flex items-center gap-3 bg-[#0d0d14] border border-indigo-500/20 rounded-lg p-3">
+              <div className="h-8 w-8 rounded bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-semibold text-sm flex-shrink-0">D</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-white truncate">{account.discord_name}</p>
+                <p className="text-xs text-gray-500 truncate">Discord連携済み</p>
+              </div>
+              <CheckCircle size={14} className="text-indigo-400 flex-shrink-0" />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">
+                Discord アカウントを連携すると、サーバ参加申請やお知らせに Discord プロフィールが紐付きます。
+              </p>
+              <button
+                onClick={handleLinkDiscord}
+                disabled={discordLoading}
+                className="flex items-center justify-center gap-3 rounded-xl bg-[#5865f2] hover:bg-[#4752c4] disabled:opacity-50 px-5 py-2.5 text-sm font-semibold transition-colors"
+              >
+                {discordLoading ? (
+                  <><Loader2 size={14} className="animate-spin" />認証中...</>
+                ) : (
+                  <>
+                    <svg width="16" height="12" viewBox="0 0 71 55" fill="white">
+                      <path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.5l-.5 1.5a55 55 0 0 0-20.4 0L24.2.5A58.5 58.5 0 0 0 9.7 4.9C-.3 19.6-2.8 33.9.5 48a59 59 0 0 0 18 9 41 41 0 0 0 3.8-6.2 39 39 0 0 1-6-2.9c.5-.4 1-.7 1.5-1.1a42 42 0 0 0 36.5 0c.5.4 1 .8 1.5 1.1a39 39 0 0 1-6 3 41 41 0 0 0 3.8 6.2 59 59 0 0 0 18-9c4-16.4-.3-30.6-11.5-43.2zM23.7 39.4c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2zm23.7 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2z"/>
+                    </svg>
+                    Discordを連携
                   </>
                 )}
               </button>
