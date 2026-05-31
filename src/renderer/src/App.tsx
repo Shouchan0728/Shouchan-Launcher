@@ -36,12 +36,7 @@ export default function App(): React.JSX.Element {
 
   const loadLauncherIcon = async () => {
     const res = await window.api.getLauncherIcon()
-    if (res.success && res.iconPath) {
-      const imgRes = await window.api.readImageAsDataUrl(res.iconPath)
-      setLauncherIconUrl(imgRes.success && imgRes.dataUrl ? imgRes.dataUrl : '')
-    } else {
-      setLauncherIconUrl('')
-    }
+    setLauncherIconUrl(res.success && res.dataUrl ? res.dataUrl : '')
   }
 
   useEffect(() => { loadLauncherIcon() }, [])
