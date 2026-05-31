@@ -46,8 +46,9 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
       if (password.length < 6) { setError('パスワードは6文字以上で入力してください'); return }
       if (password !== passwordConfirm) { setError('パスワードが一致しません'); return }
       const mcidTrimmed = mcid.trim()
-      if (!mcidTrimmed) { setError('MCIDを入力してください(統合版は BE_<gamertag>)'); return }
-      if (!/^[A-Za-z0-9_]{3,19}$/.test(mcidTrimmed)) { setError('MCIDは3〜19文字の英数字とアンダースコアで入力してください'); return }
+      if (!mcidTrimmed) { setError('MCIDを入力してください'); return }
+      if (mcidTrimmed.startsWith('BE_')) { setError('統合版(Bedrock)はホームページから申請してください。ランチャーはJava版専用です。'); return }
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(mcidTrimmed)) { setError('MCIDは3〜16文字の英数字とアンダースコアで入力してください'); return }
       setLoading(true)
       const res = await window.api.accountRegisterStart({
         username: username.trim(), email: email.trim(), password, mcid: mcidTrimmed
@@ -196,15 +197,15 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
             )}
             {mode === 'register' && (
               <div>
-                <label className="block text-xs text-gray-500 mb-1">MCID(Minecraftユーザー名)</label>
+                <label className="block text-xs text-gray-500 mb-1">MCID(Java版のユーザー名)</label>
                 <input
                   type="text" value={mcid}
                   onChange={(e) => { setMcid(e.target.value); setError('') }}
-                  placeholder="Steve または BE_PlayerName" maxLength={19} className={INPUT}
+                  placeholder="Steve" maxLength={16} className={INPUT}
                 />
                 <p className="mt-1 text-[10px] text-gray-600 leading-relaxed">
-                  Java版は通常のMCID、統合版(Bedrock)は <code className="text-sky-400">BE_</code> をゲーマータグの先頭に付けてください。
-                  <br />アカウント作成と同時にホワイトリストへ自動登録されます。
+                  アカウント作成と同時にホワイトリストへ自動登録されます。
+                  <br />統合版(Bedrock)の方は<a href="https://mc-shouchan.jp/apply" onClick={(e) => { e.preventDefault(); window.api.openExternal('https://mc-shouchan.jp/apply') }} className="text-sky-400 hover:underline">ホームページの申請フォーム</a>をご利用ください。
                 </p>
               </div>
             )}

@@ -88,8 +88,9 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
         if (data.password.length < 6) { setAccountError('パスワードは6文字以上で入力してください'); return }
         if (data.password !== data.passwordConfirm) { setAccountError('パスワードが一致しません'); return }
         const mcidTrimmed = data.mcid.trim()
-        if (!mcidTrimmed) { setAccountError('MCIDを入力してください(統合版は BE_<gamertag>)'); return }
-        if (!/^[A-Za-z0-9_]{3,19}$/.test(mcidTrimmed)) { setAccountError('MCIDは3〜19文字の英数字とアンダースコアで入力してください'); return }
+        if (!mcidTrimmed) { setAccountError('MCIDを入力してください'); return }
+        if (mcidTrimmed.startsWith('BE_')) { setAccountError('統合版(Bedrock)はホームページから申請してください。ランチャーはJava版専用です。'); return }
+        if (!/^[A-Za-z0-9_]{3,16}$/.test(mcidTrimmed)) { setAccountError('MCIDは3〜16文字の英数字とアンダースコアで入力してください'); return }
         setAccountLoading(true)
         const res = await window.api.accountRegisterStart({
           username: data.launcherUsername.trim(), email: data.email, password: data.password, mcid: mcidTrimmed
@@ -310,18 +311,18 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
 
                   {accountMode === 'register' && (
                     <div>
-                      <label className="block text-xs text-gray-500 mb-1">MCID(Minecraftユーザー名)</label>
+                      <label className="block text-xs text-gray-500 mb-1">MCID(Java版のユーザー名)</label>
                       <input
                         type="text"
                         value={data.mcid}
                         onChange={(e) => { update({ mcid: e.target.value }); setAccountError('') }}
-                        placeholder="Steve または BE_PlayerName"
-                        maxLength={19}
+                        placeholder="Steve"
+                        maxLength={16}
                         className={INPUT}
                       />
                       <p className="mt-1 text-[10px] text-gray-600 leading-relaxed">
-                        Java版は通常のMCID、統合版(Bedrock)は <code className="text-sky-400">BE_</code> をゲーマータグの先頭に付けてください。
-                        <br />アカウント作成と同時にサーバのホワイトリストへ自動登録されます。
+                        アカウント作成と同時にサーバのホワイトリストへ自動登録されます。
+                        <br />統合版(Bedrock)の方は<a href="https://mc-shouchan.jp/apply" onClick={(e) => { e.preventDefault(); window.api.openExternal('https://mc-shouchan.jp/apply') }} className="text-sky-400 hover:underline">ホームページの申請フォーム</a>をご利用ください。
                       </p>
                     </div>
                   )}
