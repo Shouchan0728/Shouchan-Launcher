@@ -2166,13 +2166,14 @@ function applyServerAccountExtras<T extends Record<string, unknown>>(
   return result as T
 }
 
-ipcMain.handle('account-register-start', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
+ipcMain.handle('account-register-start', async (_e, { username, email, password, mcid }: { username: string; email: string; password: string; mcid: string }) => {
   try {
     const normalizedEmail = email.trim().toLowerCase()
     const res = await axios.post(`${MODPACK_SERVER_URL}/account/register/start`, {
       username,
       email: normalizedEmail,
-      password
+      password,
+      mcid: (mcid || '').trim(),
     }, { timeout: 10000 })
     if (normalizedEmail) store.set('auth.pendingRegisterEmail', normalizedEmail)
     return { success: true, pendingToken: res.data.pendingToken as string }

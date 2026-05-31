@@ -27,6 +27,7 @@ interface SetupData {
   email: string
   password: string
   passwordConfirm: string
+  mcid: string  // 統合版は BE_<gamertag>、Java版は通常のMCID
   resolvedAccount: LauncherAccount | null
   mcUsername: string
   gameDir: string
@@ -51,6 +52,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
     email: '',
     password: '',
     passwordConfirm: '',
+    mcid: '',
     resolvedAccount: null,
     mcUsername: '',
     gameDir: '',
@@ -85,8 +87,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
         if (!data.password) { setAccountError('パスワードを入力してください'); return }
         if (data.password.length < 6) { setAccountError('パスワードは6文字以上で入力してください'); return }
         if (data.password !== data.passwordConfirm) { setAccountError('パスワードが一致しません'); return }
+        const mcidTrimmed = data.mcid.trim()
+        if (!mcidTrimmed) { setAccountError('MCIDを入力してください(統合版は BE_<gamertag>)'); return }
+        if (!/^[A-Za-z0-9_]{3,19}$/.test(mcidTrimmed)) { setAccountError('MCIDは3〜19文字の英数字とアンダースコアで入力してください'); return }
         setAccountLoading(true)
-        const res = await window.api.accountRegisterStart({ username: data.launcherUsername.trim(), email: data.email, password: data.password })
+        const res = await window.api.accountRegisterStart({
+          username: data.launcherUsername.trim(), email: data.email, password: data.password, mcid: mcidTrimmed
+        })
         setAccountLoading(false)
         if (!res.success || !res.pendingToken) { setAccountError(res.error || '認証コード送信に失敗しました'); return }
         setPendingToken(res.pendingToken)
@@ -298,6 +305,24 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
                     <div>
                       <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><Lock size={11} />パスワード（確認）</label>
                       <input type="password" value={data.passwordConfirm} onChange={(e) => { update({ passwordConfirm: e.target.value }); setAccountError('') }} placeholder="••••••••" className={INPUT} />
+                    </div>
+                  )}
+
+                  {accountMode === 'register' && (
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">MCID(Minecraftユーザー名)</label>
+                      <input
+                        type="text"
+                        value={data.mcid}
+                        onChange={(e) => { update({ mcid: e.target.value }); setAccountError('') }}
+                        placeholder="Steve または BE_PlayerName"
+                        maxLength={19}
+                        className={INPUT}
+                      />
+                      <p className="mt-1 text-[10px] text-gray-600 leading-relaxed">
+                        Java版は通常のMCID、統合版(Bedrock)は <code className="text-sky-400">BE_</code> をゲーマータグの先頭に付けてください。
+                        <br />アカウント作成と同時にサーバのホワイトリストへ自動登録されます。
+                      </p>
                     </div>
                   )}
                 </>

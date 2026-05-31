@@ -195,7 +195,7 @@ declare global {
 
       installJava: () => Promise<{ success: boolean; javaPath?: string; error?: string }>
 
-      accountRegisterStart: (data: { username: string; email: string; password: string }) => Promise<AccountOtpStartResult>
+      accountRegisterStart: (data: { username: string; email: string; password: string; mcid: string }) => Promise<AccountOtpStartResult>
       accountRegisterVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountLoginStart: (data: { email: string; password: string }) => Promise<AccountOtpStartResult>
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>

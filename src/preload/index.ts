@@ -30,7 +30,7 @@ const api = {
 
   installJava: () => ipcRenderer.invoke('install-java'),
 
-  accountRegisterStart: (data: { username: string; email: string; password: string }) =>
+  accountRegisterStart: (data: { username: string; email: string; password: string; mcid: string }) =>
     ipcRenderer.invoke('account-register-start', data),
   accountRegisterVerify: (data: { pendingToken: string; code: string }) =>
     ipcRenderer.invoke('account-register-verify', data),
