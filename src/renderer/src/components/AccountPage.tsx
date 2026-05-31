@@ -172,6 +172,24 @@ export default function AccountPage({
     }
   }
 
+  // 既存の登録済みMCIDで再申請(自動登録時のバグ救済用)
+  const handleRetryWhitelist = async () => {
+    const mcid = wlStatus?.mcid || account.mc_name || ''
+    if (!mcid) {
+      err('登録済みMCIDが見つかりません')
+      return
+    }
+    setWlLoading(true)
+    const res = await window.api.linkMinecraftManual(mcid)
+    setWlLoading(false)
+    if (res.ok) {
+      ok(`${mcid} をMCサーバに再申請しました`)
+      refreshWhitelistStatus()
+    } else {
+      err(res.error || '再申請に失敗しました')
+    }
+  }
+
   const handleUnlinkMicrosoft = async () => {
     const { linkedMicrosoft, ...rest } = account
     void linkedMicrosoft
@@ -346,13 +364,24 @@ export default function AccountPage({
             ホワイトリスト登録
           </h3>
           {wlStatus?.registered ? (
-            <div className="flex items-center gap-3 bg-[#0d0d14] border border-green-500/20 rounded-lg p-3">
-              <Gamepad2 size={16} className="text-green-400 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{wlStatus.mcid}</p>
-                <p className="text-xs text-gray-500">ホワイトリスト登録済み</p>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-3 bg-[#0d0d14] border border-green-500/20 rounded-lg p-3">
+                <Gamepad2 size={16} className="text-green-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{wlStatus.mcid}</p>
+                  <p className="text-xs text-gray-500">ホワイトリスト登録済み</p>
+                </div>
+                <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
               </div>
-              <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
+              <button
+                onClick={handleRetryWhitelist}
+                disabled={wlLoading}
+                className="flex items-center justify-center gap-1.5 rounded-lg bg-[#0d0d14] border border-white/10 hover:border-sky-500/40 hover:text-sky-300 disabled:opacity-50 px-3 py-1.5 text-[11px] text-gray-500 transition-colors"
+                title="MCサーバ側に登録が反映されていない場合に再申請"
+              >
+                {wlLoading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                MCサーバに反映されていない場合は再申請
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-3">
