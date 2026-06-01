@@ -38,7 +38,7 @@ interface SetupData {
   closeOnExit: boolean
 }
 
-const STEPS = ['アカウント', 'Minecraft認証', 'ゲーム設定', 'Java設定', 'メモリ設定', '完了']
+const STEPS = ['アカウント', 'Minecraft認証', 'Discord連携', 'ゲーム設定', 'Java設定', 'メモリ設定', '完了']
 const INPUT = 'w-full rounded-lg bg-[#1a1a2e] border border-white/10 px-3 py-2.5 text-sm text-white placeholder-gray-600 outline-none focus:border-blue-500/50 transition-colors'
 
 export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX.Element {
@@ -69,6 +69,24 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
   const [authError, setAuthError] = useState('')
   const [javaStatus, setJavaStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [javaProgress, setJavaProgress] = useState(0)
+  const [discordSetupLoading, setDiscordSetupLoading] = useState(false)
+  const [discordLinkedName, setDiscordLinkedName] = useState('')
+
+  const handleSetupDiscord = async () => {
+    setDiscordSetupLoading(true)
+    const res = await window.api.linkDiscord()
+    if (!res.success) {
+      setDiscordSetupLoading(false)
+      return
+    }
+    await window.api.accountVerifyToken().catch(() => {})
+    const latest = await window.api.getStore('launcherAccount') as LauncherAccount | null
+    setDiscordSetupLoading(false)
+    if (latest?.discord_name) {
+      setDiscordLinkedName(latest.discord_name)
+      if (latest) update({ resolvedAccount: latest })
+    }
+  }
 
   const update = (patch: Partial<SetupData>) => setData((p) => ({ ...p, ...patch }))
 
@@ -409,8 +427,46 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
             </div>
           )}
 
-          {/* ── Step 2: Game Directory ── */}
+          {/* ── Step 2: Discord 連携(任意) ── */}
           {step === 2 && (
+            <div className="flex flex-col gap-5 items-center text-center">
+              <div>
+                <div className="w-16 h-16 rounded-2xl bg-[#1a1a2e] border border-[#5865f2]/30 flex items-center justify-center mx-auto mb-3">
+                  <svg width="32" height="24" viewBox="0 0 71 55" fill="#5865f2">
+                    <path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.5l-.5 1.5a55 55 0 0 0-20.4 0L24.2.5A58.5 58.5 0 0 0 9.7 4.9C-.3 19.6-2.8 33.9.5 48a59 59 0 0 0 18 9 41 41 0 0 0 3.8-6.2 39 39 0 0 1-6-2.9c.5-.4 1-.7 1.5-1.1a42 42 0 0 0 36.5 0c.5.4 1 .8 1.5 1.1a39 39 0 0 1-6 3 41 41 0 0 0 3.8 6.2 59 59 0 0 0 18-9c4-16.4-.3-30.6-11.5-43.2zM23.7 39.4c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2zm23.7 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2z" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold">Discord連携(任意)</h2>
+                <p className="text-sm text-gray-500 mt-1">サーバの案内や通知を Discord で受け取れます。後からマイページでも設定可能です。</p>
+              </div>
+
+              {discordLinkedName ? (
+                <div className="flex flex-col items-center gap-2 text-[#5865f2]">
+                  <CheckCircle size={40} />
+                  <p className="font-semibold">Discord 連携完了!</p>
+                  <p className="text-sm text-gray-400">アカウント: <span className="text-white">{discordLinkedName}</span></p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 w-full">
+                  <button onClick={handleSetupDiscord} disabled={discordSetupLoading}
+                    className="flex items-center justify-center gap-3 w-full rounded-xl bg-[#5865f2] hover:bg-[#4752c4] disabled:opacity-50 px-5 py-3 font-semibold transition-colors">
+                    {discordSetupLoading ? <><Loader2 size={16} className="animate-spin" /><span className="text-sm">認証中...</span></> : (
+                      <>
+                        <svg width="18" height="14" viewBox="0 0 71 55" fill="white">
+                          <path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.5l-.5 1.5a55 55 0 0 0-20.4 0L24.2.5A58.5 58.5 0 0 0 9.7 4.9C-.3 19.6-2.8 33.9.5 48a59 59 0 0 0 18 9 41 41 0 0 0 3.8-6.2 39 39 0 0 1-6-2.9c.5-.4 1-.7 1.5-1.1a42 42 0 0 0 36.5 0c.5.4 1 .8 1.5 1.1a39 39 0 0 1-6 3 41 41 0 0 0 3.8 6.2 59 59 0 0 0 18-9c4-16.4-.3-30.6-11.5-43.2zM23.7 39.4c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2zm23.7 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2z" />
+                        </svg>
+                        <span>Discordを連携</span>
+                      </>
+                    )}
+                  </button>
+                  <p className="text-xs text-gray-500">連携せずに「次へ」を押してスキップすることもできます</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 3: Game Directory ── */}
+          {step === 3 && (
             <div className="flex flex-col gap-5">
               <div className="text-center">
                 <HardDrive size={36} className="mx-auto mb-2 text-blue-400" />
@@ -443,8 +499,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
             </div>
           )}
 
-          {/* ── Step 3: Java ── */}
-          {step === 3 && (
+          {/* ── Step 4: Java ── */}
+          {step === 4 && (
             <div className="flex flex-col gap-5">
               <div className="text-center">
                 <Cpu size={36} className="mx-auto mb-2 text-blue-400" />
@@ -476,8 +532,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
             </div>
           )}
 
-          {/* ── Step 4: Memory ── */}
-          {step === 4 && (
+          {/* ── Step 5: Memory ── */}
+          {step === 5 && (
             <div className="flex flex-col gap-5">
               <div className="text-center">
                 <Cpu size={36} className="mx-auto mb-2 text-blue-400" />
@@ -516,8 +572,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
             </div>
           )}
 
-          {/* ── Step 5: Done ── */}
-          {step === 5 && (
+          {/* ── Step 6: Done ── */}
+          {step === 6 && (
             <div className="flex flex-col items-center gap-4 text-center">
               <CheckCircle size={52} className="text-green-400" />
               <div>
@@ -551,12 +607,12 @@ export default function SetupWizard({ onComplete }: SetupWizardProps): React.JSX
           <ChevronLeft size={16} /> 戻る
         </button>
 
-        {step < 5 ? (
+        {step < 6 ? (
           <button
             onClick={() => {
               if (step === 0) { handleStep0Next(); return }
               if (step === 1 && !isDev && authStatus !== 'done') return
-              if (step === 1 && canSkipConfigSteps()) { setStep(5); return }
+              if (step === 1 && canSkipConfigSteps()) { setStep(6); return }
               setStep((s) => s + 1)
             }}
             disabled={
