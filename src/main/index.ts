@@ -728,6 +728,24 @@ ipcMain.handle('link-discord', async () => {
   }
 })
 
+ipcMain.handle('unlink-discord', async () => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインしてください' }
+    await axios.delete(`${MODPACK_SERVER_URL}/account/unlink-discord`, {
+      headers: { Authorization: `Bearer ${account.token}` },
+      timeout: 10000,
+    })
+    return { success: true }
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response) {
+      const data = err.response.data as { error?: string }
+      return { success: false, error: data?.error || `サーバーエラー (${err.response.status})` }
+    }
+    return { success: false, error: (err as Error).message }
+  }
+})
+
 ipcMain.handle('link-minecraft-manual', async (_e, mcid: string) => {
   try {
     const account = store.get('launcherAccount') as { token?: string } | null

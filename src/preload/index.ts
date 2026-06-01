@@ -45,6 +45,7 @@ const api = {
 
   linkMinecraftManual: (mcid: string) => ipcRenderer.invoke('link-minecraft-manual', mcid),
   linkDiscord: () => ipcRenderer.invoke('link-discord'),
+  unlinkDiscord: () => ipcRenderer.invoke('unlink-discord'),
   fetchWhitelistStatus: () => ipcRenderer.invoke('fetch-whitelist-status'),
   updateLauncherUsername: (username: string) => ipcRenderer.invoke('update-launcher-username', username),
 

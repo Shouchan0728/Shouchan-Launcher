@@ -178,6 +178,20 @@ export default function AccountPage({
     }
   }
 
+  const handleUnlinkDiscord = async () => {
+    setDiscordLoading(true)
+    const res = await window.api.unlinkDiscord()
+    setDiscordLoading(false)
+    if (res.success) {
+      const { discord_id, discord_name, ...rest } = account
+      void discord_id; void discord_name
+      onAccountChange(rest)
+      ok('Discord連携を解除しました')
+    } else {
+      err(res.error || 'Discord連携の解除に失敗しました')
+    }
+  }
+
   const handleRegisterWhitelist = async () => {
     const mcid = mcidInput.trim()
     if (!mcid) return
@@ -388,13 +402,23 @@ export default function AccountPage({
             Discordアカウント連携
           </h3>
           {account.discord_name ? (
-            <div className="flex items-center gap-3 bg-[#0d0d14] border border-indigo-500/20 rounded-lg p-3">
-              <div className="h-8 w-8 rounded bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-semibold text-sm flex-shrink-0">D</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">{account.discord_name}</p>
-                <p className="text-xs text-gray-500 truncate">Discord連携済み</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 bg-[#0d0d14] border border-indigo-500/20 rounded-lg p-3">
+                <div className="h-8 w-8 rounded bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-semibold text-sm flex-shrink-0">D</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{account.discord_name}</p>
+                  <p className="text-xs text-gray-500 truncate">Discord連携済み</p>
+                </div>
+                <CheckCircle size={14} className="text-indigo-400 flex-shrink-0" />
               </div>
-              <CheckCircle size={14} className="text-indigo-400 flex-shrink-0" />
+              <button
+                onClick={handleUnlinkDiscord}
+                disabled={discordLoading}
+                className="flex items-center justify-center gap-2 rounded-lg bg-[#0d0d14] border border-red-500/20 text-red-400 hover:bg-red-500/10 disabled:opacity-50 px-4 py-2 text-sm transition-colors"
+              >
+                {discordLoading ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />}
+                連携を解除
+              </button>
             </div>
           ) : (
             <div className="flex flex-col gap-3">

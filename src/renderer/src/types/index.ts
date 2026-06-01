@@ -249,6 +249,7 @@ declare global {
 
       linkMinecraftManual: (mcid: string) => Promise<{ ok: boolean; error?: string }>
       linkDiscord: () => Promise<{ success: boolean; error?: string }>
+      unlinkDiscord: () => Promise<{ success: boolean; error?: string }>
       fetchWhitelistStatus: () => Promise<{ ok: boolean; registered: boolean; mcid?: string; mc_uuid?: string; error?: string }>
       updateLauncherUsername: (username: string) => Promise<{ ok: boolean; username?: string; error?: string }>
 
