@@ -76,6 +76,8 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const [launcherIconPath, setLauncherIconPath] = useState<string | null>(null)
   const [launcherIconPreview, setLauncherIconPreview] = useState('')
   const [launcherIconLoading, setLauncherIconLoading] = useState(false)
+  const [launcherIconUpdatedAt, setLauncherIconUpdatedAt] = useState<Date | null>(null)
+  const [launcherIconFlash, setLauncherIconFlash] = useState(false)
 
   // ── クラッシュレポート ────────────────────────────────────────────────────────
   const [crashReports, setCrashReports] = useState<CrashReport[]>([])
@@ -337,6 +339,9 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
         setLauncherIconPath('server')
         setLauncherIconPreview(res.dataUrl)
       }
+      setLauncherIconUpdatedAt(new Date())
+      setLauncherIconFlash(true)
+      setTimeout(() => setLauncherIconFlash(false), 3000)
       onLauncherIconChange?.()
     }
     else err(res.error || 'アイコンの変更に失敗')
@@ -350,6 +355,9 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
       ok('ランチャーアイコンをデフォルトに戻しました(全員に反映)')
       setLauncherIconPath(null)
       setLauncherIconPreview('')
+      setLauncherIconUpdatedAt(new Date())
+      setLauncherIconFlash(true)
+      setTimeout(() => setLauncherIconFlash(false), 3000)
       onLauncherIconChange?.()
     } else err(res.error || 'リセット失敗')
   }
@@ -999,18 +1007,33 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                 <Monitor size={11} />ランチャーアイコン
               </p>
               <div className="flex items-center gap-5 mb-5">
-                <div className="h-20 w-20 rounded-2xl overflow-hidden flex-shrink-0 bg-black/40 border border-white/10 flex items-center justify-center">
+                <div className={`relative h-20 w-20 rounded-2xl overflow-hidden flex-shrink-0 bg-black/40 border flex items-center justify-center transition-all duration-500 ${launcherIconFlash ? 'border-green-400 ring-4 ring-green-400/40 scale-105' : 'border-white/10'}`}>
                   {launcherIconPreview
                     ? <img src={launcherIconPreview} alt="launcher icon" className="h-full w-full object-cover" />
                     : <ImageIcon size={28} className="text-gray-600" />}
+                  {launcherIconFlash && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-green-500/30 animate-pulse">
+                      <CheckCircle size={28} className="text-green-300 drop-shadow-lg" />
+                    </div>
+                  )}
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-white mb-1">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white mb-1 flex items-center gap-2">
                     {launcherIconPath ? 'カスタムアイコン設定済み(サーバ配信中)' : 'デフォルトアイコン使用中'}
+                    {launcherIconFlash && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-green-500/15 border border-green-500/40 px-2 py-0.5 text-[10px] font-bold text-green-300">
+                        <CheckCircle size={10} />更新完了
+                      </span>
+                    )}
                   </p>
                   <p className="text-[11px] text-gray-600">PNG または ICO ファイル(最大5MB)</p>
                   {launcherIconPath && (
                     <p className="text-[10px] text-gray-700 mt-1">変更すると全ユーザーのランチャーに反映されます</p>
+                  )}
+                  {launcherIconUpdatedAt && (
+                    <p className="text-[10px] text-gray-600 mt-1 flex items-center gap-1">
+                      <RefreshCw size={9} />最終更新: {launcherIconUpdatedAt.toLocaleTimeString('ja-JP')}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1018,7 +1041,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                 <button onClick={handleLauncherIconSelect} disabled={launcherIconLoading}
                   className="flex items-center gap-2 rounded-lg bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 px-4 py-2 text-sm font-semibold transition-colors">
                   {launcherIconLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                  アイコンを変更
+                  {launcherIconLoading ? 'アップロード中...' : 'アイコンを変更'}
                 </button>
                 {launcherIconPath && (
                   <button onClick={handleLauncherIconReset} disabled={launcherIconLoading}
@@ -1027,7 +1050,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                   </button>
                 )}
               </div>
-              <p className="mt-3 text-[11px] text-gray-600">変更は他ユーザーのランチャー次回起動時に反映されます</p>
+              <p className="mt-3 text-[11px] text-gray-600">変更は他ユーザーのランチャー次回起動時に反映されます(自分のウィンドウは即座に更新)</p>
             </div>
           </div>
         )}
