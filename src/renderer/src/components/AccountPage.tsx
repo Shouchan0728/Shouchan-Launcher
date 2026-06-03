@@ -4,6 +4,7 @@ import {
   Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Pencil, Shirt, Upload, RefreshCw, Lock
 } from 'lucide-react'
 import { LauncherAccount, WhitelistStatus, MinecraftProfile } from '../types'
+import ConfirmDialog from './ConfirmDialog'
 
 interface AccountPageProps {
   account: LauncherAccount
@@ -159,6 +160,15 @@ export default function AccountPage({
 
   const [discordLoading, setDiscordLoading] = useState(false)
 
+  // ── 確認ダイアログ ───────────────────────────────────────────────────────────
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string
+    message: string
+    confirmText?: string
+    destructive?: boolean
+    onConfirm: () => void
+  } | null>(null)
+
   // ── パスワード再設定 ──────────────────────────────────────────────────────────
   type PwResetPhase = 'idle' | 'code'
   const [pwResetPhase, setPwResetPhase] = useState<PwResetPhase>('idle')
@@ -218,8 +228,18 @@ export default function AccountPage({
     }
   }
 
-  const handleUnlinkDiscord = async () => {
-    if (!window.confirm(`Discord連携「${account.discord_name}」を解除しますか?\n\n解除後はホワリス申請や通知にDiscord プロフィールが紐付かなくなります(後から再連携可能)。`)) return
+  const handleUnlinkDiscord = () => {
+    setConfirmDialog({
+      title: 'Discord連携を解除',
+      message: `「${account.discord_name}」の連携を解除しますか?\n\n解除後はホワリス申請や通知にDiscordプロフィールが紐付かなくなります(後から再連携可能)。`,
+      confirmText: '解除する',
+      destructive: true,
+      onConfirm: doUnlinkDiscord,
+    })
+  }
+
+  const doUnlinkDiscord = async () => {
+    setConfirmDialog(null)
     setDiscordLoading(true)
     const res = await window.api.unlinkDiscord()
     setDiscordLoading(false)
@@ -266,8 +286,18 @@ export default function AccountPage({
     }
   }
 
-  const handleUnlinkMicrosoft = async () => {
-    if (!window.confirm(`Minecraftアカウント連携「${account.linkedMicrosoft?.name || ''}」を解除しますか?\n\n解除するとゲーム起動に再度Microsoftログインが必要になります。`)) return
+  const handleUnlinkMicrosoft = () => {
+    setConfirmDialog({
+      title: 'Minecraftアカウント連携を解除',
+      message: `「${account.linkedMicrosoft?.name || ''}」の連携を解除しますか?\n\n解除するとゲーム起動に再度Microsoftログインが必要になります。`,
+      confirmText: '解除する',
+      destructive: true,
+      onConfirm: doUnlinkMicrosoft,
+    })
+  }
+
+  const doUnlinkMicrosoft = async () => {
+    setConfirmDialog(null)
     const { linkedMicrosoft, ...rest } = account
     void linkedMicrosoft
     onAccountChange(rest)
@@ -808,6 +838,17 @@ export default function AccountPage({
           )}
         </div>
       </div>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmText={confirmDialog.confirmText}
+          destructive={confirmDialog.destructive}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   )
 }
