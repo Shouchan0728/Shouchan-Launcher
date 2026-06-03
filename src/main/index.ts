@@ -728,6 +728,24 @@ ipcMain.handle('link-discord', async () => {
   }
 })
 
+ipcMain.handle('unlink-discord', async () => {
+  try {
+    const account = store.get('launcherAccount') as { token?: string } | null
+    if (!account?.token) return { success: false, error: 'ログインしてください' }
+    await axios.delete(`${MODPACK_SERVER_URL}/account/unlink-discord`, {
+      headers: { Authorization: `Bearer ${account.token}` },
+      timeout: 10000,
+    })
+    return { success: true }
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err) && err.response) {
+      const data = err.response.data as { error?: string }
+      return { success: false, error: data?.error || `サーバーエラー (${err.response.status})` }
+    }
+    return { success: false, error: (err as Error).message }
+  }
+})
+
 ipcMain.handle('link-minecraft-manual', async (_e, mcid: string) => {
   try {
     const account = store.get('launcherAccount') as { token?: string } | null
@@ -2201,13 +2219,14 @@ function applyServerAccountExtras<T extends Record<string, unknown>>(
   return result as T
 }
 
-ipcMain.handle('account-register-start', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
+ipcMain.handle('account-register-start', async (_e, { username, email, password, mcid }: { username: string; email: string; password: string; mcid: string }) => {
   try {
     const normalizedEmail = email.trim().toLowerCase()
     const res = await axios.post(`${MODPACK_SERVER_URL}/account/register/start`, {
       username,
       email: normalizedEmail,
-      password
+      password,
+      mcid: (mcid || '').trim(),
     }, { timeout: 10000 })
     if (normalizedEmail) store.set('auth.pendingRegisterEmail', normalizedEmail)
     return { success: true, pendingToken: res.data.pendingToken as string }
@@ -2273,6 +2292,27 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
     return { success: true, account }
   } catch (err: unknown) {
     return { success: false, error: formatAccountApiError(err, '認証コードの確認に失敗しました') }
+  }
+})
+
+ipcMain.handle('account-password-reset-start', async (_e, { email }: { email: string }) => {
+  try {
+    const normalizedEmail = email.trim().toLowerCase()
+    const res = await axios.post(`${MODPACK_SERVER_URL}/account/password-reset/start`,
+      { email: normalizedEmail }, { timeout: 10000 })
+    return { success: true, pendingToken: res.data.pendingToken as string }
+  } catch (err: unknown) {
+    return { success: false, error: formatAccountApiError(err, '認証コード送信に失敗しました') }
+  }
+})
+
+ipcMain.handle('account-password-reset-verify', async (_e, { pendingToken, code, newPassword }: { pendingToken: string; code: string; newPassword: string }) => {
+  try {
+    await axios.post(`${MODPACK_SERVER_URL}/account/password-reset/verify`,
+      { pendingToken, code, newPassword }, { timeout: 10000 })
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: formatAccountApiError(err, 'パスワード再設定に失敗しました') }
   }
 })
 
