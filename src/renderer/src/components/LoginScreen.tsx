@@ -8,8 +8,8 @@ interface LoginScreenProps {
 
 const INPUT = 'w-full rounded-lg bg-[#1a1a2e] border border-white/10 px-3 py-2.5 text-sm text-white placeholder-gray-600 outline-none focus:border-blue-500/50 transition-colors'
 
-type Mode = 'login' | 'register'
-type Step = 'credentials' | 'code' | 'microsoft'
+type Mode = 'login' | 'register' | 'reset'
+type Step = 'credentials' | 'code' | 'microsoft' | 'reset-done'
 
 export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.Element {
   const [mode, setMode] = useState<Mode>('login')
@@ -34,6 +34,8 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
     setStep('credentials')
     setVerificationCode('')
     setPendingToken('')
+    setPassword('')
+    setPasswordConfirm('')
   }
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
@@ -61,6 +63,20 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
       return
     }
 
+    if (mode === 'reset') {
+      if (!email.trim()) { setError('メールアドレスを入力してください'); return }
+      setLoading(true)
+      const res = await window.api.accountPasswordResetStart({ email: email.trim() })
+      setLoading(false)
+      if (!res.success || !res.pendingToken) { setError(res.error || '認証コード送信に失敗しました'); return }
+      setPendingToken(res.pendingToken)
+      setVerificationCode('')
+      setPassword('')
+      setPasswordConfirm('')
+      setStep('code')
+      return
+    }
+
     if (!email.trim() || !password) { setError('メールアドレスとパスワードを入力してください'); return }
     setLoading(true)
     const res = await window.api.accountLoginStart({ email: email.trim(), password })
@@ -75,6 +91,21 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
     e.preventDefault()
     setError('')
     if (!verificationCode.trim()) { setError('確認コードを入力してください'); return }
+
+    if (mode === 'reset') {
+      if (!password) { setError('新しいパスワードを入力してください'); return }
+      if (password.length < 6) { setError('新しいパスワードは6文字以上で入力してください'); return }
+      if (password !== passwordConfirm) { setError('新しいパスワードが一致しません'); return }
+      setLoading(true)
+      const res = await window.api.accountPasswordResetVerify({
+        pendingToken, code: verificationCode.trim(), newPassword: password
+      })
+      setLoading(false)
+      if (!res.success) { setError(res.error || 'パスワード再設定に失敗しました'); return }
+      setStep('reset-done')
+      return
+    }
+
     setLoading(true)
     const res = mode === 'register'
       ? await window.api.accountRegisterVerify({ pendingToken, code: verificationCode.trim() })
@@ -109,8 +140,10 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
 
   const subtitle =
     step === 'microsoft' ? 'Minecraftアカウントを連携'
-      : mode === 'register' ? 'アカウントを新規作成'
-        : 'アカウントにログイン'
+      : step === 'reset-done' ? 'パスワード再設定完了'
+        : mode === 'reset' ? 'パスワード再設定'
+          : mode === 'register' ? 'アカウントを新規作成'
+            : 'アカウントにログイン'
 
   return (
     <div className="flex h-screen w-screen bg-[#111117] items-center justify-center select-none flex-col">
@@ -169,9 +202,15 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
                 type="email" value={email}
                 onChange={(e) => { setEmail(e.target.value); setError('') }}
                 placeholder="example@email.com" className={INPUT}
-                autoFocus={mode === 'login'}
+                autoFocus={mode === 'login' || mode === 'reset'}
               />
+              {mode === 'reset' && (
+                <p className="mt-1 text-[10px] text-gray-600 leading-relaxed">
+                  登録済みメールアドレスを入力してください。確認コードをお送りします。
+                </p>
+              )}
             </div>
+            {mode !== 'reset' && (
             <div>
               <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><Lock size={11} />パスワード</label>
               <div className="relative">
@@ -184,7 +223,15 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
                   {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
+              {mode === 'login' && (
+                <div className="mt-1.5 text-right">
+                  <button type="button" onClick={() => switchMode('reset')} className="text-[11px] text-blue-400 hover:text-blue-300 hover:underline transition-colors">
+                    パスワードを忘れた?
+                  </button>
+                </div>
+              )}
             </div>
+            )}
             {mode === 'register' && (
               <div>
                 <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><Lock size={11} />パスワード（確認）</label>
@@ -213,8 +260,15 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
             <button type="submit" disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-2.5 text-sm font-semibold text-white transition-colors mt-1">
               {loading
                 ? <><Loader2 size={14} className="animate-spin" />送信中...</>
-                : mode === 'register' ? '確認コードを送信' : 'ログイン'}
+                : mode === 'register' ? '確認コードを送信'
+                  : mode === 'reset' ? '再設定コードを送信'
+                    : 'ログイン'}
             </button>
+            {mode === 'reset' && (
+              <button type="button" onClick={() => switchMode('login')} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
+                ← ログイン画面に戻る
+              </button>
+            )}
           </form>
         )}
 
@@ -235,16 +289,56 @@ export default function LoginScreen({ onLogin }: LoginScreenProps): React.JSX.El
                 maxLength={8}
               />
             </div>
+            {mode === 'reset' && (
+              <>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><Lock size={11} />新しいパスワード</label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'} value={password}
+                      onChange={(e) => { setPassword(e.target.value); setError('') }}
+                      placeholder="••••••••" className={INPUT + ' pr-10'} minLength={6}
+                    />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300">
+                      {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1 flex items-center gap-1"><Lock size={11} />新しいパスワード(確認)</label>
+                  <input
+                    type="password" value={passwordConfirm}
+                    onChange={(e) => { setPasswordConfirm(e.target.value); setError('') }}
+                    placeholder="••••••••" className={INPUT} minLength={6}
+                  />
+                </div>
+              </>
+            )}
             {error && <p className="text-xs text-red-400 bg-red-500/10 rounded-lg px-3 py-2">{error}</p>}
             <button type="submit" disabled={loading} className="flex items-center justify-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 py-2.5 text-sm font-semibold text-white transition-colors mt-1">
               {loading
                 ? <><Loader2 size={14} className="animate-spin" />確認中...</>
-                : mode === 'register' ? '確認して登録' : '確認してログイン'}
+                : mode === 'register' ? '確認して登録'
+                  : mode === 'reset' ? 'パスワードを再設定'
+                    : '確認してログイン'}
             </button>
             <button type="button" onClick={() => { setStep('credentials'); setError(''); setVerificationCode('') }} className="text-xs text-gray-600 hover:text-gray-400 transition-colors">
               ← 戻る
             </button>
           </form>
+        )}
+
+        {step === 'reset-done' && (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <CheckCircle size={48} className="text-green-400" />
+            <div>
+              <p className="text-sm font-semibold text-white">パスワードを再設定しました</p>
+              <p className="text-xs text-gray-500 mt-1">新しいパスワードでログインできます。</p>
+            </div>
+            <button onClick={() => { switchMode('login'); setStep('credentials') }} className="w-full rounded-lg bg-blue-600 hover:bg-blue-500 py-2.5 text-sm font-semibold text-white transition-colors">
+              ログイン画面へ
+            </button>
+          </div>
         )}
 
         {step === 'microsoft' && account && (

@@ -38,6 +38,10 @@ const api = {
     ipcRenderer.invoke('account-login-start', data),
   accountLoginVerify: (data: { pendingToken: string; code: string }) =>
     ipcRenderer.invoke('account-login-verify', data),
+  accountPasswordResetStart: (data: { email: string }) =>
+    ipcRenderer.invoke('account-password-reset-start', data),
+  accountPasswordResetVerify: (data: { pendingToken: string; code: string; newPassword: string }) =>
+    ipcRenderer.invoke('account-password-reset-verify', data),
   accountSyncSettings: (settings: unknown) =>
     ipcRenderer.invoke('account-sync-settings', settings),
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),

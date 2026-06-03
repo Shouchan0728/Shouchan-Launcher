@@ -2260,6 +2260,27 @@ ipcMain.handle('account-login-verify', async (_e, { pendingToken, code }: { pend
   }
 })
 
+ipcMain.handle('account-password-reset-start', async (_e, { email }: { email: string }) => {
+  try {
+    const normalizedEmail = email.trim().toLowerCase()
+    const res = await axios.post(`${MODPACK_SERVER_URL}/account/password-reset/start`,
+      { email: normalizedEmail }, { timeout: 10000 })
+    return { success: true, pendingToken: res.data.pendingToken as string }
+  } catch (err: unknown) {
+    return { success: false, error: formatAccountApiError(err, '認証コード送信に失敗しました') }
+  }
+})
+
+ipcMain.handle('account-password-reset-verify', async (_e, { pendingToken, code, newPassword }: { pendingToken: string; code: string; newPassword: string }) => {
+  try {
+    await axios.post(`${MODPACK_SERVER_URL}/account/password-reset/verify`,
+      { pendingToken, code, newPassword }, { timeout: 10000 })
+    return { success: true }
+  } catch (err: unknown) {
+    return { success: false, error: formatAccountApiError(err, 'パスワード再設定に失敗しました') }
+  }
+})
+
 ipcMain.handle('account-register', async (_e, { username, email, password }: { username: string; email: string; password: string }) => {
   void _e
   void username

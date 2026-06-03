@@ -199,6 +199,8 @@ declare global {
       accountRegisterVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountLoginStart: (data: { email: string; password: string }) => Promise<AccountOtpStartResult>
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
+      accountPasswordResetStart: (data: { email: string }) => Promise<AccountOtpStartResult>
+      accountPasswordResetVerify: (data: { pendingToken: string; code: string; newPassword: string }) => Promise<{ success: boolean; error?: string }>
       accountSyncSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>
       accountVerifyToken: () => Promise<{ success: boolean; role?: 'developer' | 'player'; error?: string }>
       accountAvatarSync: (avatar: string | null) => Promise<{ success: boolean; error?: string }>
