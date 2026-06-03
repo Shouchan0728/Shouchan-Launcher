@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   User, Mail, Shield, Calendar, Camera, Trash2, CheckCircle, Loader2,
-  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Pencil, Shirt, Upload, RefreshCw
+  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Pencil, Shirt, Upload, RefreshCw, Lock
 } from 'lucide-react'
 import { LauncherAccount, WhitelistStatus, MinecraftProfile } from '../types'
+import ConfirmDialog from './ConfirmDialog'
 
 interface AccountPageProps {
   account: LauncherAccount
@@ -157,6 +158,101 @@ export default function AccountPage({
     }
   }
 
+  const [discordLoading, setDiscordLoading] = useState(false)
+
+  // ── 確認ダイアログ ───────────────────────────────────────────────────────────
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string
+    message: string
+    confirmText?: string
+    destructive?: boolean
+    onConfirm: () => void
+  } | null>(null)
+
+  // ── パスワード再設定 ──────────────────────────────────────────────────────────
+  type PwResetPhase = 'idle' | 'code'
+  const [pwResetPhase, setPwResetPhase] = useState<PwResetPhase>('idle')
+  const [pwResetPending, setPwResetPending] = useState('')
+  const [pwResetCode, setPwResetCode] = useState('')
+  const [pwResetNew, setPwResetNew] = useState('')
+  const [pwResetNewConfirm, setPwResetNewConfirm] = useState('')
+  const [pwResetLoading, setPwResetLoading] = useState(false)
+
+  const handleStartPasswordReset = async () => {
+    setPwResetLoading(true)
+    const res = await window.api.accountPasswordResetStart({ email: account.email })
+    setPwResetLoading(false)
+    if (!res.success || !res.pendingToken) { err(res.error || '認証コード送信に失敗しました'); return }
+    setPwResetPending(res.pendingToken)
+    setPwResetCode('')
+    setPwResetNew('')
+    setPwResetNewConfirm('')
+    setPwResetPhase('code')
+    ok(`${account.email} に再設定コードを送信しました`)
+  }
+
+  const handleVerifyPasswordReset = async () => {
+    if (!pwResetCode.trim()) { err('確認コードを入力してください'); return }
+    if (!pwResetNew || pwResetNew.length < 6) { err('新しいパスワードは6文字以上で入力してください'); return }
+    if (pwResetNew !== pwResetNewConfirm) { err('新しいパスワードが一致しません'); return }
+    setPwResetLoading(true)
+    const res = await window.api.accountPasswordResetVerify({
+      pendingToken: pwResetPending, code: pwResetCode.trim(), newPassword: pwResetNew,
+    })
+    setPwResetLoading(false)
+    if (!res.success) { err(res.error || 'パスワード再設定に失敗しました'); return }
+    setPwResetPhase('idle')
+    setPwResetPending('')
+    setPwResetCode('')
+    setPwResetNew('')
+    setPwResetNewConfirm('')
+    ok('パスワードを再設定しました')
+  }
+  const handleLinkDiscord = async () => {
+    setDiscordLoading(true)
+    const res = await window.api.linkDiscord()
+    if (!res.success) {
+      setDiscordLoading(false)
+      err(res.error || 'Discord連携に失敗しました')
+      return
+    }
+    // Discord OAuth は外部ブラウザで完了するため、結果をサーバから再取得して反映
+    await window.api.accountVerifyToken().catch(() => {})
+    const latest = await window.api.getStore('launcherAccount') as LauncherAccount | null
+    setDiscordLoading(false)
+    if (latest?.discord_name) {
+      onAccountChange(latest)
+      ok(`Discord「${latest.discord_name}」を連携しました`)
+    } else {
+      err('Discord連携の確認ができませんでした。ウィンドウを閉じた直後の場合は数秒お待ちください。')
+    }
+  }
+
+  const handleUnlinkDiscord = () => {
+    setConfirmDialog({
+      title: 'Discord連携を解除',
+      message: `「${account.discord_name}」の連携を解除しますか?\n\n解除後はホワリス申請や通知にDiscordプロフィールが紐付かなくなります(後から再連携可能)。`,
+      confirmText: '解除する',
+      destructive: true,
+      onConfirm: doUnlinkDiscord,
+    })
+  }
+
+  const doUnlinkDiscord = async () => {
+    setConfirmDialog(null)
+    setDiscordLoading(true)
+    const res = await window.api.unlinkDiscord()
+    setDiscordLoading(false)
+    if (res.success) {
+      const { discord_id, discord_name, ...rest } = account
+      void discord_id; void discord_name
+      onAccountChange(rest)
+      ok('Discord連携を解除しました')
+    } else {
+      err(res.error || 'Discord連携の解除に失敗しました')
+    }
+  }
+
   const handleRegisterWhitelist = async () => {
     const mcid = mcidInput.trim()
     if (!mcid) return
@@ -190,13 +286,24 @@ export default function AccountPage({
     }
   }
 
-  const handleUnlinkMicrosoft = async () => {
+  const handleUnlinkMicrosoft = () => {
+    setConfirmDialog({
+      title: 'Minecraftアカウント連携を解除',
+      message: `「${account.linkedMicrosoft?.name || ''}」の連携を解除しますか?\n\n解除するとゲーム起動に再度Microsoftログインが必要になります。`,
+      confirmText: '解除する',
+      destructive: true,
+      onConfirm: doUnlinkMicrosoft,
+    })
+  }
+
+  const doUnlinkMicrosoft = async () => {
+    setConfirmDialog(null)
     const { linkedMicrosoft, ...rest } = account
     void linkedMicrosoft
     onAccountChange(rest)
     await window.api.deleteStore('mc.auth')
     onMcUsernameChange('')
-    ok('Microsoftアカウントの紐付けを解除しました')
+    ok('Minecraftアカウントの紐付けを解除しました')
   }
 
   const handleSaveUsername = async () => {
@@ -299,11 +406,11 @@ export default function AccountPage({
           </div>
         </div>
 
-        {/* ── Microsoft link ── */}
+        {/* ── Minecraft account link ── */}
         <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
           <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
             <LinkIcon size={14} />
-            Microsoftアカウント連携
+            Minecraftアカウント連携
           </h3>
 
           {account.linkedMicrosoft ? (
@@ -312,10 +419,13 @@ export default function AccountPage({
                 <Gamepad2 size={16} className="text-green-400 flex-shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-white truncate">{account.linkedMicrosoft.name}</p>
-                  <p className="text-xs text-gray-500 truncate">Shouchanアカウントに紐付け済み</p>
+                  <p className="text-xs text-gray-500 truncate">MCID 紐付け済み(ホワリス登録対象)</p>
                 </div>
                 <CheckCircle size={14} className="text-green-400 flex-shrink-0" />
               </div>
+              <p className="text-[11px] text-gray-600">
+                ※ ゲームを起動するには Microsoft アカウントへのログインが別途必要です。
+              </p>
               <button
                 onClick={handleUnlinkMicrosoft}
                 className="flex items-center justify-center gap-2 rounded-lg bg-[#0d0d14] border border-red-500/20 text-red-400 hover:bg-red-500/10 px-4 py-2 text-sm transition-colors"
@@ -327,7 +437,7 @@ export default function AccountPage({
           ) : (
             <div className="flex flex-col gap-3">
               <p className="text-xs text-gray-500">
-                Microsoftアカウントを紐付けると、次回からワンクリックでログインできます。
+                Microsoftアカウントでログインすると、Minecraftアカウントが紐付けされて次回からワンクリック起動できます。
                 {mcUsername && (
                   <span className="block mt-1 text-gray-400">
                     現在のMinecraftアカウント: <span className="text-white">{mcUsername}</span>
@@ -349,7 +459,57 @@ export default function AccountPage({
                       <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
                       <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
                     </svg>
-                    Microsoftアカウントを紐付ける
+                    Microsoftでログイン
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Discord link ── */}
+        <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
+          <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
+            <LinkIcon size={14} />
+            Discordアカウント連携
+          </h3>
+          {account.discord_name ? (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-3 bg-[#0d0d14] border border-indigo-500/20 rounded-lg p-3">
+                <div className="h-8 w-8 rounded bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-300 font-semibold text-sm flex-shrink-0">D</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-white truncate">{account.discord_name}</p>
+                  <p className="text-xs text-gray-500 truncate">Discord連携済み</p>
+                </div>
+                <CheckCircle size={14} className="text-indigo-400 flex-shrink-0" />
+              </div>
+              <button
+                onClick={handleUnlinkDiscord}
+                disabled={discordLoading}
+                className="flex items-center justify-center gap-2 rounded-lg bg-[#0d0d14] border border-red-500/20 text-red-400 hover:bg-red-500/10 disabled:opacity-50 px-4 py-2 text-sm transition-colors"
+              >
+                {discordLoading ? <Loader2 size={13} className="animate-spin" /> : <Unlink size={13} />}
+                連携を解除
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">
+                Discord アカウントを連携すると、サーバ参加申請やお知らせに Discord プロフィールが紐付きます。
+              </p>
+              <button
+                onClick={handleLinkDiscord}
+                disabled={discordLoading}
+                className="flex items-center justify-center gap-3 rounded-xl bg-[#5865f2] hover:bg-[#4752c4] disabled:opacity-50 px-5 py-2.5 text-sm font-semibold transition-colors"
+              >
+                {discordLoading ? (
+                  <><Loader2 size={14} className="animate-spin" />認証中...</>
+                ) : (
+                  <>
+                    <svg width="16" height="12" viewBox="0 0 71 55" fill="white">
+                      <path d="M60.1 4.9A58.5 58.5 0 0 0 45.6.5l-.5 1.5a55 55 0 0 0-20.4 0L24.2.5A58.5 58.5 0 0 0 9.7 4.9C-.3 19.6-2.8 33.9.5 48a59 59 0 0 0 18 9 41 41 0 0 0 3.8-6.2 39 39 0 0 1-6-2.9c.5-.4 1-.7 1.5-1.1a42 42 0 0 0 36.5 0c.5.4 1 .8 1.5 1.1a39 39 0 0 1-6 3 41 41 0 0 0 3.8 6.2 59 59 0 0 0 18-9c4-16.4-.3-30.6-11.5-43.2zM23.7 39.4c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2zm23.7 0c-3.5 0-6.4-3.2-6.4-7.2s2.8-7.3 6.4-7.3 6.5 3.3 6.4 7.3c0 4-2.8 7.2-6.4 7.2z"/>
+                    </svg>
+                    Discordを連携
                   </>
                 )}
               </button>
@@ -596,11 +756,99 @@ export default function AccountPage({
               </div>
             )}
             <Row label="メールアドレス" value={account.email} />
+            <Row
+              label="MCID"
+              value={account.mc_name || '(未連携)'}
+              hint={account.mc_name?.startsWith('BE_') ? '統合版' : account.mc_name ? 'Java版' : undefined}
+            />
             <Row label="ロール" value={account.role === 'developer' ? '開発者' : 'プレイヤー'} />
             <Row label="登録日" value={formatDate(account.createdAt)} />
           </div>
         </div>
+
+        {/* ── パスワード再設定 ── */}
+        <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
+          <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
+            <Lock size={14} />
+            パスワード再設定
+          </h3>
+          {pwResetPhase === 'idle' ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">
+                登録メール <span className="text-white">{account.email}</span> に確認コードを送信し、新しいパスワードを設定します。
+              </p>
+              <button
+                onClick={handleStartPasswordReset}
+                disabled={pwResetLoading}
+                className="flex items-center justify-center gap-2 rounded-lg bg-[#0d0d14] border border-blue-500/30 hover:bg-blue-500/10 hover:border-blue-500/60 disabled:opacity-50 px-4 py-2 text-sm text-blue-300 transition-colors w-fit"
+              >
+                {pwResetLoading ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                確認コードを送信
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-400 bg-[#121225] border border-white/10 rounded-lg px-3 py-2">
+                {account.email} に確認コードを送信しました。メール内のコードと新しいパスワードを入力してください。
+              </p>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">確認コード</label>
+                <input
+                  type="text" value={pwResetCode}
+                  onChange={(e) => setPwResetCode(e.target.value.replace(/\s+/g, ''))}
+                  placeholder="6桁コード" maxLength={8}
+                  className="w-full bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">新しいパスワード</label>
+                <input
+                  type="password" value={pwResetNew}
+                  onChange={(e) => setPwResetNew(e.target.value)}
+                  placeholder="••••••••" minLength={6}
+                  className="w-full bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">新しいパスワード(確認)</label>
+                <input
+                  type="password" value={pwResetNewConfirm}
+                  onChange={(e) => setPwResetNewConfirm(e.target.value)}
+                  placeholder="••••••••" minLength={6}
+                  className="w-full bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={handleVerifyPasswordReset}
+                  disabled={pwResetLoading || !pwResetCode.trim() || !pwResetNew}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-sm font-semibold transition-colors"
+                >
+                  {pwResetLoading ? <Loader2 size={13} className="animate-spin" /> : null}
+                  再設定する
+                </button>
+                <button
+                  onClick={() => { setPwResetPhase('idle'); setPwResetCode(''); setPwResetNew(''); setPwResetNewConfirm('') }}
+                  className="rounded-lg bg-[#0d0d14] border border-white/10 hover:bg-white/5 px-4 py-2 text-sm text-gray-400 transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
+
+      {confirmDialog && (
+        <ConfirmDialog
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmText={confirmDialog.confirmText}
+          destructive={confirmDialog.destructive}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   )
 }

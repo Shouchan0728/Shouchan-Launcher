@@ -195,10 +195,12 @@ declare global {
 
       installJava: () => Promise<{ success: boolean; javaPath?: string; error?: string }>
 
-      accountRegisterStart: (data: { username: string; email: string; password: string }) => Promise<AccountOtpStartResult>
+      accountRegisterStart: (data: { username: string; email: string; password: string; mcid: string }) => Promise<AccountOtpStartResult>
       accountRegisterVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
       accountLoginStart: (data: { email: string; password: string }) => Promise<AccountOtpStartResult>
       accountLoginVerify: (data: { pendingToken: string; code: string }) => Promise<AccountOtpVerifyResult>
+      accountPasswordResetStart: (data: { email: string }) => Promise<AccountOtpStartResult>
+      accountPasswordResetVerify: (data: { pendingToken: string; code: string; newPassword: string }) => Promise<{ success: boolean; error?: string }>
       accountSyncSettings: (settings: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>
       accountVerifyToken: () => Promise<{ success: boolean; role?: 'developer' | 'player'; error?: string }>
       accountAvatarSync: (avatar: string | null) => Promise<{ success: boolean; error?: string }>
@@ -249,6 +251,7 @@ declare global {
 
       linkMinecraftManual: (mcid: string) => Promise<{ ok: boolean; error?: string }>
       linkDiscord: () => Promise<{ success: boolean; error?: string }>
+      unlinkDiscord: () => Promise<{ success: boolean; error?: string }>
       fetchWhitelistStatus: () => Promise<{ ok: boolean; registered: boolean; mcid?: string; mc_uuid?: string; error?: string }>
       updateLauncherUsername: (username: string) => Promise<{ ok: boolean; username?: string; error?: string }>
 

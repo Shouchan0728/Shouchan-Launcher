@@ -30,7 +30,7 @@ const api = {
 
   installJava: () => ipcRenderer.invoke('install-java'),
 
-  accountRegisterStart: (data: { username: string; email: string; password: string }) =>
+  accountRegisterStart: (data: { username: string; email: string; password: string; mcid: string }) =>
     ipcRenderer.invoke('account-register-start', data),
   accountRegisterVerify: (data: { pendingToken: string; code: string }) =>
     ipcRenderer.invoke('account-register-verify', data),
@@ -38,6 +38,10 @@ const api = {
     ipcRenderer.invoke('account-login-start', data),
   accountLoginVerify: (data: { pendingToken: string; code: string }) =>
     ipcRenderer.invoke('account-login-verify', data),
+  accountPasswordResetStart: (data: { email: string }) =>
+    ipcRenderer.invoke('account-password-reset-start', data),
+  accountPasswordResetVerify: (data: { pendingToken: string; code: string; newPassword: string }) =>
+    ipcRenderer.invoke('account-password-reset-verify', data),
   accountSyncSettings: (settings: unknown) =>
     ipcRenderer.invoke('account-sync-settings', settings),
   accountVerifyToken: () => ipcRenderer.invoke('account-verify-token'),
@@ -45,6 +49,7 @@ const api = {
 
   linkMinecraftManual: (mcid: string) => ipcRenderer.invoke('link-minecraft-manual', mcid),
   linkDiscord: () => ipcRenderer.invoke('link-discord'),
+  unlinkDiscord: () => ipcRenderer.invoke('unlink-discord'),
   fetchWhitelistStatus: () => ipcRenderer.invoke('fetch-whitelist-status'),
   updateLauncherUsername: (username: string) => ipcRenderer.invoke('update-launcher-username', username),
 
