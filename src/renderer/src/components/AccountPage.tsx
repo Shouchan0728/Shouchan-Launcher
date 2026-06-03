@@ -158,6 +158,46 @@ export default function AccountPage({
   }
 
   const [discordLoading, setDiscordLoading] = useState(false)
+
+  // ── パスワード再設定 ──────────────────────────────────────────────────────────
+  type PwResetPhase = 'idle' | 'code'
+  const [pwResetPhase, setPwResetPhase] = useState<PwResetPhase>('idle')
+  const [pwResetPending, setPwResetPending] = useState('')
+  const [pwResetCode, setPwResetCode] = useState('')
+  const [pwResetNew, setPwResetNew] = useState('')
+  const [pwResetNewConfirm, setPwResetNewConfirm] = useState('')
+  const [pwResetLoading, setPwResetLoading] = useState(false)
+
+  const handleStartPasswordReset = async () => {
+    setPwResetLoading(true)
+    const res = await window.api.accountPasswordResetStart({ email: account.email })
+    setPwResetLoading(false)
+    if (!res.success || !res.pendingToken) { err(res.error || '認証コード送信に失敗しました'); return }
+    setPwResetPending(res.pendingToken)
+    setPwResetCode('')
+    setPwResetNew('')
+    setPwResetNewConfirm('')
+    setPwResetPhase('code')
+    ok(`${account.email} に再設定コードを送信しました`)
+  }
+
+  const handleVerifyPasswordReset = async () => {
+    if (!pwResetCode.trim()) { err('確認コードを入力してください'); return }
+    if (!pwResetNew || pwResetNew.length < 6) { err('新しいパスワードは6文字以上で入力してください'); return }
+    if (pwResetNew !== pwResetNewConfirm) { err('新しいパスワードが一致しません'); return }
+    setPwResetLoading(true)
+    const res = await window.api.accountPasswordResetVerify({
+      pendingToken: pwResetPending, code: pwResetCode.trim(), newPassword: pwResetNew,
+    })
+    setPwResetLoading(false)
+    if (!res.success) { err(res.error || 'パスワード再設定に失敗しました'); return }
+    setPwResetPhase('idle')
+    setPwResetPending('')
+    setPwResetCode('')
+    setPwResetNew('')
+    setPwResetNewConfirm('')
+    ok('パスワードを再設定しました')
+  }
   const handleLinkDiscord = async () => {
     setDiscordLoading(true)
     const res = await window.api.linkDiscord()
@@ -179,6 +219,7 @@ export default function AccountPage({
   }
 
   const handleUnlinkDiscord = async () => {
+    if (!window.confirm(`Discord連携「${account.discord_name}」を解除しますか?\n\n解除後はホワリス申請や通知にDiscord プロフィールが紐付かなくなります(後から再連携可能)。`)) return
     setDiscordLoading(true)
     const res = await window.api.unlinkDiscord()
     setDiscordLoading(false)
@@ -226,12 +267,13 @@ export default function AccountPage({
   }
 
   const handleUnlinkMicrosoft = async () => {
+    if (!window.confirm(`Minecraftアカウント連携「${account.linkedMicrosoft?.name || ''}」を解除しますか?\n\n解除するとゲーム起動に再度Microsoftログインが必要になります。`)) return
     const { linkedMicrosoft, ...rest } = account
     void linkedMicrosoft
     onAccountChange(rest)
     await window.api.deleteStore('mc.auth')
     onMcUsernameChange('')
-    ok('Microsoftアカウントの紐付けを解除しました')
+    ok('Minecraftアカウントの紐付けを解除しました')
   }
 
   const handleSaveUsername = async () => {
@@ -684,9 +726,86 @@ export default function AccountPage({
               </div>
             )}
             <Row label="メールアドレス" value={account.email} />
+            <Row
+              label="MCID"
+              value={account.mc_name || '(未連携)'}
+              hint={account.mc_name?.startsWith('BE_') ? '統合版' : account.mc_name ? 'Java版' : undefined}
+            />
             <Row label="ロール" value={account.role === 'developer' ? '開発者' : 'プレイヤー'} />
             <Row label="登録日" value={formatDate(account.createdAt)} />
           </div>
+        </div>
+
+        {/* ── パスワード再設定 ── */}
+        <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-5">
+          <h3 className="mb-3 text-sm font-semibold text-gray-300 flex items-center gap-2">
+            <Lock size={14} />
+            パスワード再設定
+          </h3>
+          {pwResetPhase === 'idle' ? (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-500">
+                登録メール <span className="text-white">{account.email}</span> に確認コードを送信し、新しいパスワードを設定します。
+              </p>
+              <button
+                onClick={handleStartPasswordReset}
+                disabled={pwResetLoading}
+                className="flex items-center justify-center gap-2 rounded-lg bg-[#0d0d14] border border-blue-500/30 hover:bg-blue-500/10 hover:border-blue-500/60 disabled:opacity-50 px-4 py-2 text-sm text-blue-300 transition-colors w-fit"
+              >
+                {pwResetLoading ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                確認コードを送信
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-gray-400 bg-[#121225] border border-white/10 rounded-lg px-3 py-2">
+                {account.email} に確認コードを送信しました。メール内のコードと新しいパスワードを入力してください。
+              </p>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">確認コード</label>
+                <input
+                  type="text" value={pwResetCode}
+                  onChange={(e) => setPwResetCode(e.target.value.replace(/\s+/g, ''))}
+                  placeholder="6桁コード" maxLength={8}
+                  className="w-full bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">新しいパスワード</label>
+                <input
+                  type="password" value={pwResetNew}
+                  onChange={(e) => setPwResetNew(e.target.value)}
+                  placeholder="••••••••" minLength={6}
+                  className="w-full bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">新しいパスワード(確認)</label>
+                <input
+                  type="password" value={pwResetNewConfirm}
+                  onChange={(e) => setPwResetNewConfirm(e.target.value)}
+                  placeholder="••••••••" minLength={6}
+                  className="w-full bg-[#0d0d14] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500/50"
+                />
+              </div>
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={handleVerifyPasswordReset}
+                  disabled={pwResetLoading || !pwResetCode.trim() || !pwResetNew}
+                  className="flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 text-sm font-semibold transition-colors"
+                >
+                  {pwResetLoading ? <Loader2 size={13} className="animate-spin" /> : null}
+                  再設定する
+                </button>
+                <button
+                  onClick={() => { setPwResetPhase('idle'); setPwResetCode(''); setPwResetNew(''); setPwResetNewConfirm('') }}
+                  className="rounded-lg bg-[#0d0d14] border border-white/10 hover:bg-white/5 px-4 py-2 text-sm text-gray-400 transition-colors"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
