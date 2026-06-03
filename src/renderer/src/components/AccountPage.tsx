@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import {
   User, Mail, Shield, Calendar, Camera, Trash2, CheckCircle, Loader2,
-  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Pencil, Shirt, Upload, RefreshCw
+  Link as LinkIcon, Unlink, AlertCircle, Gamepad2, ListPlus, Pencil, Shirt, Upload, RefreshCw, Lock
 } from 'lucide-react'
 import { LauncherAccount, WhitelistStatus, MinecraftProfile } from '../types'
 
