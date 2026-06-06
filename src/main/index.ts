@@ -174,6 +174,9 @@ const hideInstanceFiles = (instanceDir: string): void => {
         // configは見せる。中の特定ファイルのみ保護
         spawnSync(ATTRIB_EXE, ['-h', '-r', fullPath], { windowsHide: true })
         protectConfigFiles(fullPath)
+      } else if (item.toLowerCase() === 'options.txt') {
+        // options.txtは保護しない（プレイヤーが設定変更できるよう）
+        spawnSync(ATTRIB_EXE, ['-h', '-r', fullPath], { windowsHide: true })
       } else {
         spawnSync(ATTRIB_EXE, ['+h', '+r', fullPath, '/s', '/d'], { windowsHide: true })
       }

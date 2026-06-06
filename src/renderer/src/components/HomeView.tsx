@@ -795,13 +795,13 @@ export default function HomeView({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold truncate">{mp.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-[10px] text-gray-500">v{mp.version}</span>
-                        <span className="text-[10px] text-gray-600">·</span>
-                        <span className="text-[10px] text-gray-500">MC {mp.mcVersion}</span>
+                      <div className="flex items-center gap-1.5 mt-0.5 min-w-0">
+                        <span className="text-[10px] text-gray-500 whitespace-nowrap">v{mp.version}</span>
+                        <span className="text-[10px] text-gray-600 whitespace-nowrap">·</span>
+                        <span className="text-[10px] text-gray-500 whitespace-nowrap">MC {mp.mcVersion}</span>
                         {mp.description && (
-                          <><span className="text-[10px] text-gray-600">·</span>
-                          <span className="text-[10px] text-gray-500 truncate">{mp.description}</span></>
+                          <><span className="text-[10px] text-gray-600 whitespace-nowrap">·</span>
+                          <span className="text-[10px] text-gray-500 truncate min-w-0">{mp.description}</span></>
                         )}
                       </div>
                     </div>
