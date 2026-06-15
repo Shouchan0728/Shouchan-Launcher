@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import {
   Upload, Trash2, RefreshCw, Plus, Save, Package,
   AlertCircle, CheckCircle, FileText, FolderOpen, Folder, Zap,
@@ -48,6 +48,52 @@ interface DeveloperMenuProps {
 const INPUT = 'w-full rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-sm text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 transition-colors'
 const SELECT = 'w-full rounded-lg bg-[#0d0d14] border border-white/10 px-3 py-1.5 text-sm text-white outline-none focus:border-yellow-500/50 transition-colors'
 
+
+// ── モジュールレベルユーティリティ ────────────────────────────────────────────
+const getExt = (p: string) => p.split('.').pop()?.toLowerCase() ?? ''
+const KIND: Record<string, string> = { jar: 'Jar', json: 'JSON', toml: 'TOML', cfg: '設定', properties: 'プロパティ', png: 'PNG', txt: 'テキスト', zip: 'ZIP', log: 'ログ' }
+const fmtSize = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
+const FileIcon = ({ ext }: { ext: string }) =>
+  ext === 'jar' ? <Package size={14} className="text-blue-400/80 flex-shrink-0" /> :
+  ['json', 'toml', 'cfg', 'properties', 'txt'].includes(ext) ? <FileText size={14} className="text-green-400/80 flex-shrink-0" /> :
+  ext === 'log' ? <FileText size={14} className="text-yellow-400/50 flex-shrink-0" /> :
+  <File size={14} className="text-gray-400/60 flex-shrink-0" />
+
+const FileRow = React.memo(function FileRow({
+  f, showFullPath, distState, confirmDelete,
+  onDistToggle, onConfirmDelete, onCancelDelete, onDelete
+}: {
+  f: ServerFile; showFullPath?: boolean; distState: DistState; confirmDelete: boolean
+  onDistToggle: () => void; onConfirmDelete: () => void; onCancelDelete: () => void; onDelete: () => void
+}) {
+  const name = f.path.split('/').pop() || f.path
+  const ext = getExt(name)
+  return (
+    <div className="grid grid-cols-[1fr_80px_56px_80px_36px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
+      <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-300 min-w-0" title={f.path}>
+        <FileIcon ext={ext} /><span className="truncate text-xs text-gray-400">{showFullPath ? f.path : name}</span>
+      </div>
+      <div className="px-3 py-2 text-xs text-gray-600 truncate">{KIND[ext] ?? (ext ? ext.toUpperCase() : 'ファイル')}</div>
+      <div className="px-3 py-2 text-xs text-gray-500 text-right">{f.size ? fmtSize(f.size) : '—'}</div>
+      <div className="px-1 flex items-center">
+        <DistBadge state={distState} onClick={onDistToggle} />
+      </div>
+      <div className="flex items-center justify-center">
+        {confirmDelete ? (
+          <div className="flex items-center gap-0.5">
+            <button onClick={onDelete} className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white">✓</button>
+            <button onClick={onCancelDelete} className="text-[10px] px-1.5 py-0.5 bg-[#252535] rounded text-gray-400">✗</button>
+          </div>
+        ) : (
+          <button onClick={onConfirmDelete} className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors">
+            <Trash2 size={12} />
+          </button>
+        )}
+      </div>
+    </div>
+  )
+})
+
 export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLauncherIconChange }: DeveloperMenuProps): React.JSX.Element {
   const [tab, setTab] = useState<DevTab>('modpacks')
   const [status, setStatus] = useState<{ msg: string; type: 'idle' | 'ok' | 'error' }>({ msg: '', type: 'idle' })
@@ -80,6 +126,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const [downloadTargets, setDownloadTargets] = useState<string[]>([])
   const [userFilePaths, setUserFilePaths] = useState<string[]>([])
   const [pathRules, setPathRules] = useState<{ pattern: string; mode: 'user' | 'protected' }[]>([])
+  const [savedState, setSavedState] = useState<{ downloadTargets: string[]; userFilePaths: string[]; pathRules: { pattern: string; mode: 'user' | 'protected' }[] } | null>(null)
   const [savingDownloadTargets, setSavingDownloadTargets] = useState(false)
   const [fileTab, setFileTab] = useState<'browser' | 'rules'>('browser')
   const [newRulePattern, setNewRulePattern] = useState('')
@@ -169,9 +216,13 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     if (!mpId) return
     const res = await window.api.devGetModpackDownloadTargets(mpId)
     if (res.success) {
-      setDownloadTargets(res.data || [])
-      setUserFilePaths((res as { userFilePaths?: string[] }).userFilePaths || [])
-      setPathRules((res as { pathRules?: { pattern: string; mode: 'user' | 'protected' }[] }).pathRules || [])
+      const targets = res.data || []
+      const userPaths = (res as { userFilePaths?: string[] }).userFilePaths || []
+      const rules = (res as { pathRules?: { pattern: string; mode: 'user' | 'protected' }[] }).pathRules || []
+      setDownloadTargets(targets)
+      setUserFilePaths(userPaths)
+      setPathRules(rules)
+      setSavedState({ downloadTargets: targets, userFilePaths: userPaths, pathRules: rules })
     } else err(res.error || '配布対象の読み込みに失敗')
   }
 
@@ -327,8 +378,10 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     setSavingDownloadTargets(true)
     const res = await window.api.devSaveModpackDownloadTargets(filesMpId, downloadTargets, userFilePaths, pathRules)
     setSavingDownloadTargets(false)
-    if (res.success) ok(`配布対象・パスルールを保存しました（${res.count ?? 0} 件）`)
-    else err(res.error || '保存に失敗')
+    if (res.success) {
+      setSavedState({ downloadTargets: [...downloadTargets], userFilePaths: [...userFilePaths], pathRules: [...pathRules] })
+      ok(`配布対象・パスルールを保存しました（${res.count ?? 0} 件）`)
+    } else err(res.error || '保存に失敗')
   }
 
   const navigateUp = () => setCurrentPath(currentPath.includes('/') ? currentPath.split('/').slice(0, -1).join('/') : '')
@@ -444,26 +497,34 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
 
   // ── ファイル管理ヘルパー ──────────────────────────────────────────────────────
   const selectedMp = modpacks.find((m) => m.id === selectedMpId)
-  const prefix = currentPath ? currentPath + '/' : ''
-  const folderSet = new Set<string>()
-  const filesHere: ServerFile[] = []
-  for (const f of files) {
-    if (!f.path.startsWith(prefix)) continue
-    const rest = f.path.slice(prefix.length)
-    const slash = rest.indexOf('/')
-    if (slash === -1) filesHere.push(f)
-    else folderSet.add(rest.slice(0, slash))
-  }
-  const visibleFolders = Array.from(folderSet).sort()
-  filesHere.sort((a, b) => a.path.localeCompare(b.path))
-  const getExt = (p: string) => p.split('.').pop()?.toLowerCase() ?? ''
-  const KIND: Record<string, string> = { jar: 'Jar', json: 'JSON', toml: 'TOML', cfg: '設定', properties: 'プロパティ', png: 'PNG', txt: 'テキスト', zip: 'ZIP', log: 'ログ' }
-  const fmtSize = (b: number) => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`
-  const FileIcon = ({ ext }: { ext: string }) =>
-    ext === 'jar' ? <Package size={14} className="text-blue-400/80 flex-shrink-0" /> :
-    ['json', 'toml', 'cfg', 'properties', 'txt'].includes(ext) ? <FileText size={14} className="text-green-400/80 flex-shrink-0" /> :
-    ext === 'log' ? <FileText size={14} className="text-yellow-400/50 flex-shrink-0" /> :
-    <File size={14} className="text-gray-400/60 flex-shrink-0" />
+
+  const { filesHere, visibleFolders } = useMemo(() => {
+    const p = currentPath ? currentPath + '/' : ''
+    const folderSet = new Set<string>()
+    const here: ServerFile[] = []
+    for (const f of files) {
+      if (!f.path.startsWith(p)) continue
+      const rest = f.path.slice(p.length)
+      const slash = rest.indexOf('/')
+      if (slash === -1) here.push(f)
+      else folderSet.add(rest.slice(0, slash))
+    }
+    here.sort((a, b) => a.path.localeCompare(b.path))
+    return { filesHere: here, visibleFolders: Array.from(folderSet).sort() }
+  }, [files, currentPath])
+
+  const filteredFiles = useMemo(() =>
+    fileSearch.trim()
+      ? files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase()))
+      : null,
+    [files, fileSearch]
+  )
+
+  const hasUnsavedChanges = savedState !== null && (
+    JSON.stringify([...savedState.downloadTargets].sort()) !== JSON.stringify([...downloadTargets].sort()) ||
+    JSON.stringify([...savedState.userFilePaths].sort()) !== JSON.stringify([...userFilePaths].sort()) ||
+    JSON.stringify(savedState.pathRules) !== JSON.stringify(pathRules)
+  )
 
   const LOADERS: { v: ModLoader; label: string }[] = [
     { v: 'vanilla', label: 'Vanilla（なし）' },
@@ -790,6 +851,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                     setFiles([])
                     setDownloadTargets([])
                     setUserFilePaths([])
+                    setSavedState(null)
                     if (e.target.value) {
                       loadFiles(e.target.value)
                       loadDownloadTargets(e.target.value)
@@ -925,43 +987,30 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                       </div>
                     ) : fileSearch.trim() ? (
                       <>
-                        {files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).length === 0 ? (
+                        {!filteredFiles?.length ? (
                           <div className="flex flex-col items-center justify-center p-10 text-gray-700">
                             <Search size={24} className="mb-2 opacity-40" />
                             <p className="text-sm">「{fileSearch}」に一致するファイルはありません</p>
                           </div>
                         ) : (
-                          files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).map((f) => {
-                            const name = f.path.split('/').pop() || f.path
-                            const ext = getExt(name)
+                          filteredFiles.map((f) => {
                             const distState: DistState = !downloadTargets.includes(f.path) ? 'none'
                               : userFilePaths.includes(f.path) ? 'user' : 'protected'
                             return (
-                              <div key={f.path} className="grid grid-cols-[1fr_80px_56px_80px_36px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
-                                <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-300 min-w-0" title={f.path}>
-                                  <FileIcon ext={ext} /><span className="truncate text-xs text-gray-400">{f.path}</span>
-                                </div>
-                                <div className="px-3 py-2 text-xs text-gray-600 truncate">{KIND[ext] ?? (ext ? ext.toUpperCase() : 'ファイル')}</div>
-                                <div className="px-3 py-2 text-xs text-gray-500 text-right">{f.size ? fmtSize(f.size) : '—'}</div>
-                                <div className="px-1 flex items-center">
-                                  <DistBadge state={distState} onClick={() => cycleFileDistribution(f.path)} />
-                                </div>
-                                <div className="flex items-center justify-center">
-                                  {confirmDeletePath === f.path ? (
-                                    <div className="flex items-center gap-0.5">
-                                      <button onClick={() => handleDeleteFile(f.path)} className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white">✓</button>
-                                      <button onClick={() => setConfirmDeletePath(null)} className="text-[10px] px-1.5 py-0.5 bg-[#252535] rounded text-gray-400">✗</button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => setConfirmDeletePath(f.path)} className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors">
-                                      <Trash2 size={12} />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
+                              <FileRow
+                                key={f.path}
+                                f={f}
+                                showFullPath
+                                distState={distState}
+                                confirmDelete={confirmDeletePath === f.path}
+                                onDistToggle={() => cycleFileDistribution(f.path)}
+                                onConfirmDelete={() => setConfirmDeletePath(f.path)}
+                                onCancelDelete={() => setConfirmDeletePath(null)}
+                                onDelete={() => handleDeleteFile(f.path)}
+                              />
                             )
-                          }))
-                        }
+                          })
+                        )}
                       </>
                     ) : (
                       <>
@@ -1015,36 +1064,19 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                           )
                         })}
                         {filesHere.map((f) => {
-                          const name = f.path.split('/').pop() || f.path
-                          const ext = getExt(name)
                           const distState: DistState = !downloadTargets.includes(f.path) ? 'none'
                             : userFilePaths.includes(f.path) ? 'user' : 'protected'
                           return (
-                            <div key={f.path} className="grid grid-cols-[1fr_80px_56px_80px_36px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
-                              <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-300 min-w-0">
-                                <FileIcon ext={ext} /><span className="truncate">{name}</span>
-                              </div>
-                              <div className="px-3 py-2 text-xs text-gray-600 truncate">{KIND[ext] ?? (ext ? ext.toUpperCase() : 'ファイル')}</div>
-                              <div className="px-3 py-2 text-xs text-gray-500 text-right">{f.size ? fmtSize(f.size) : '—'}</div>
-                              <div className="px-1 flex items-center">
-                                <DistBadge state={distState} onClick={() => cycleFileDistribution(f.path)} />
-                              </div>
-                              <div className="flex items-center justify-center">
-                                {confirmDeletePath === f.path ? (
-                                  <div className="flex items-center gap-0.5">
-                                    <button onClick={() => handleDeleteFile(f.path)}
-                                      className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white">✓</button>
-                                    <button onClick={() => setConfirmDeletePath(null)}
-                                      className="text-[10px] px-1.5 py-0.5 bg-[#252535] rounded text-gray-400">✗</button>
-                                  </div>
-                                ) : (
-                                  <button onClick={() => setConfirmDeletePath(f.path)}
-                                    className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors">
-                                    <Trash2 size={12} />
-                                  </button>
-                                )}
-                              </div>
-                            </div>
+                            <FileRow
+                              key={f.path}
+                              f={f}
+                              distState={distState}
+                              confirmDelete={confirmDeletePath === f.path}
+                              onDistToggle={() => cycleFileDistribution(f.path)}
+                              onConfirmDelete={() => setConfirmDeletePath(f.path)}
+                              onCancelDelete={() => setConfirmDeletePath(null)}
+                              onDelete={() => handleDeleteFile(f.path)}
+                            />
                           )
                         })}
                         {!filesLoading && visibleFolders.length === 0 && filesHere.length === 0 && (
@@ -1060,7 +1092,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                     <span className="text-[11px] text-gray-600">{files.length} 件</span>
                     <span className="text-[11px] text-amber-500/80">保護: {downloadTargets.filter(p => !userFilePaths.includes(p)).length}件</span>
                     <span className="text-[11px] text-blue-400/80">編集可: {userFilePaths.filter(p => downloadTargets.includes(p)).length}件</span>
-                    {fileSearch.trim() && <span className="text-[11px] text-gray-500">検索: {files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).length}件表示</span>}
+                    {fileSearch.trim() && <span className="text-[11px] text-gray-500">検索: {filteredFiles?.length ?? 0}件表示</span>}
                     {!fileSearch && currentPath && <span className="text-[11px] text-gray-600">場所: {currentPath}/</span>}
                   </div>
                 </div>
@@ -1162,13 +1194,19 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
 
                 {/* 保存フッター */}
                 <div className="flex items-center justify-between bg-[#1a1a2e] rounded-lg border border-white/5 px-3 py-2">
-                  <div className="text-[11px] text-gray-600">
-                    配布: {downloadTargets.length}件 ・ パスルール: {pathRules.length}件
+                  <div className="flex items-center gap-3 text-[11px] text-gray-600">
+                    <span>配布: {downloadTargets.length}件</span>
+                    <span>パスルール: {pathRules.length}件</span>
+                    {hasUnsavedChanges && (
+                      <span className="flex items-center gap-1 text-yellow-500/80">
+                        <AlertCircle size={10} />未保存の変更あり
+                      </span>
+                    )}
                   </div>
                   <button
                     onClick={handleSaveDownloadTargets}
                     disabled={savingDownloadTargets}
-                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 font-semibold transition-colors"
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors disabled:opacity-40 ${hasUnsavedChanges ? 'bg-yellow-600 hover:bg-yellow-500' : 'bg-[#252535] hover:bg-[#303045] text-gray-300'}`}
                   >
                     {savingDownloadTargets ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
                     設定を保存
