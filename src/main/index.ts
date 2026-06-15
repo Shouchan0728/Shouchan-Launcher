@@ -85,6 +85,25 @@ interface ManifestFileEntry {
   path: string
   url?: string
   hash?: string
+  skipIntegrity?: boolean
+  userFile?: boolean  // true = 表示・編集可（整合性チェックなし・隠し属性なし）
+}
+
+interface PathRule {
+  pattern: string  // パスプレフィックス（例: "saves", "screenshots", "options.txt"）
+  mode: 'user' | 'protected'  // user=表示+編集可, protected=隠し+読取専用
+}
+
+const parseManifest = (data: unknown): { files: ManifestFileEntry[]; pathRules: PathRule[] } => {
+  if (Array.isArray(data)) return { files: data as ManifestFileEntry[], pathRules: [] }
+  if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>
+    return {
+      files: Array.isArray(obj.files) ? (obj.files as ManifestFileEntry[]) : [],
+      pathRules: Array.isArray(obj.pathRules) ? (obj.pathRules as PathRule[]) : []
+    }
+  }
+  return { files: [], pathRules: [] }
 }
 
 interface MojangLibraryRule {
@@ -120,7 +139,7 @@ interface MojangVersionJson {
 const normalizePath = (p: string): string => p.replace(/\\/g, '/').replace(/^\/+/, '')
 
 // ── インスタンス/ユーザーデータ分離ユーティリティ ────────────────────────────────
-const USER_FOLDERS = ['resourcepacks', 'schematics', 'shaderpacks', 'saves', 'screenshots']
+const USER_FOLDERS = ['resourcepacks', 'schematics', 'shaderpacks', 'saves', 'screenshots', 'journeymap']
 const ATTRIB_EXE = path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'attrib.exe')
 
 // config内で保護する特定ファイル/フォルダ
@@ -161,6 +180,49 @@ const protectConfigFiles = (configDir: string): void => {
       spawnSync(ATTRIB_EXE, ['+h', '+r', fullPath, '/s', '/d'], { windowsHide: true })
     }
   }
+}
+
+// pathRulesに基づいてインスタンスディレクトリ内の自動生成ファイルに属性を適用
+const applyPathRules = (instanceDir: string, rules: PathRule[]): void => {
+  if (process.platform !== 'win32' || !rules.length) return
+  try {
+    for (const rule of rules) {
+      const relPath = normalizePath(rule.pattern).replace(/\//g, path.sep)
+      const fullPath = path.join(instanceDir, relPath)
+      if (!fs.existsSync(fullPath)) continue
+      if (rule.mode === 'user') {
+        spawnSync(ATTRIB_EXE, ['-r', '-h', fullPath, '/s', '/d'], { windowsHide: true })
+        let dir = path.dirname(fullPath)
+        while (dir.length > instanceDir.length && dir.startsWith(instanceDir)) {
+          spawnSync(ATTRIB_EXE, ['-h', dir], { windowsHide: true })
+          dir = path.dirname(dir)
+        }
+      } else {
+        spawnSync(ATTRIB_EXE, ['+h', '+r', fullPath, '/s', '/d'], { windowsHide: true })
+      }
+    }
+  } catch { /* 失敗しても続行 */ }
+}
+
+// userFile=trueのファイルを隠し属性・読み取り専用から解除する
+const unprotectUserFiles = (instanceDir: string, userFilePaths: string[]): void => {
+  if (process.platform !== 'win32' || userFilePaths.length === 0) return
+  try {
+    const unprotectedDirs = new Set<string>()
+    for (const relPath of userFilePaths) {
+      const fullPath = path.join(instanceDir, normalizePath(relPath).replace(/\//g, path.sep))
+      if (fs.existsSync(fullPath)) {
+        spawnSync(ATTRIB_EXE, ['-r', '-h', fullPath], { windowsHide: true })
+      }
+      // 親ディレクトリをinstanceDirまで隠し解除（読み取り専用は外さない）
+      let dir = path.dirname(fullPath)
+      while (dir.length > instanceDir.length && dir.startsWith(instanceDir) && !unprotectedDirs.has(dir)) {
+        unprotectedDirs.add(dir)
+        spawnSync(ATTRIB_EXE, ['-h', dir], { windowsHide: true })
+        dir = path.dirname(dir)
+      }
+    }
+  } catch { /* 失敗しても続行 */ }
 }
 
 // instancesDirを隠し+書き込み禁止（ジャンクション・configはスキップ）
@@ -955,27 +1017,96 @@ const ensureJava21 = async (onProgress?: (msg: string) => void): Promise<string 
   }
 }
 
-// ── ファイル検証 ───────────────────────────────────────────────────────────
-const verifyModpackFiles = async (modpackDir: string, id: string): Promise<{ valid: boolean; missingFiles: string[] }> => {
+// ── ファイル検証（ハッシュ整合性チェック付き） ───────────────────────────────
+const computeSha256 = (filePath: string): string => {
+  const data = fs.readFileSync(filePath)
+  return crypto.createHash('sha256').update(data).digest('hex')
+}
+
+const verifyModpackFiles = async (
+  modpackDir: string,
+  id: string,
+  onProgress?: (msg: string) => void
+): Promise<{ valid: boolean; invalidFiles: string[]; manifest: ManifestFileEntry[]; pathRules: PathRule[] }> => {
   try {
     const res = await axios.get(modpackFilesUrl(id), { timeout: 10000 })
-    const files: ManifestFileEntry[] = res.data
-    if (!Array.isArray(files) || files.length === 0) {
-      return { valid: false, missingFiles: ['manifest'] }
+    const { files, pathRules } = parseManifest(res.data)
+    if (files.length === 0) {
+      return { valid: false, invalidFiles: ['manifest'], manifest: [], pathRules: [] }
     }
 
-    const missingFiles: string[] = []
+    const invalidFiles: string[] = []
     for (const file of files) {
-      const filePath = path.join(modpackDir, normalizePath(file.path))
+      const relativePath = normalizePath(file.path)
+      // 隠しディレクトリ内のファイル（.index/ など）はスキップ
+      if (relativePath.split('/').some((part) => part.startsWith('.'))) continue
+
+      const filePath = path.join(modpackDir, relativePath)
+
       if (!fs.existsSync(filePath)) {
-        missingFiles.push(file.path)
+        invalidFiles.push(file.path)
+        continue
+      }
+
+      // サーバーがハッシュを提供している場合はSHA-256で比較（skipIntegrity/userFileはスキップ）
+      if (file.hash && !file.skipIntegrity && !file.userFile) {
+        try {
+          const localHash = computeSha256(filePath)
+          if (localHash !== file.hash) {
+            onProgress?.(`[Launcher] ⚠️ 改ざん検知: ${relativePath}`)
+            invalidFiles.push(file.path)
+          }
+        } catch {
+          // 読み取り不可などの場合も不正とみなす
+          invalidFiles.push(file.path)
+        }
       }
     }
 
-    return { valid: missingFiles.length === 0, missingFiles }
+    return { valid: invalidFiles.length === 0, invalidFiles, manifest: files, pathRules }
   } catch {
-    return { valid: false, missingFiles: ['manifest'] }
+    return { valid: false, invalidFiles: ['manifest'], manifest: [], pathRules: [] }
   }
+}
+
+// ── ファイル自動修復（整合性チェック失敗時） ────────────────────────────────
+const repairModpackFiles = async (
+  modpackDir: string,
+  id: string,
+  manifest: ManifestFileEntry[],
+  invalidFilePaths: string[],
+  onProgress?: (msg: string) => void
+): Promise<{ success: boolean; error?: string }> => {
+  const invalidSet = new Set(invalidFilePaths.map(normalizePath))
+  const targets = manifest.filter((f) => invalidSet.has(normalizePath(f.path)))
+
+  let repaired = 0
+  for (const file of targets) {
+    const relativePath = normalizePath(file.path)
+    const filePath = path.join(modpackDir, relativePath)
+
+    try {
+      // 書き込み前に隠し・読み取り専用属性を解除
+      if (fs.existsSync(filePath)) {
+        spawnSync(ATTRIB_EXE, ['-r', '-h', filePath], { windowsHide: true })
+        try { fs.chmodSync(filePath, 0o666) } catch { /* ignore */ }
+      }
+      fs.mkdirSync(path.dirname(filePath), { recursive: true })
+
+      const url = resolveManifestUrl(id, file)
+      const fileRes = await axios.get(url, { responseType: 'arraybuffer', timeout: 120000 })
+      fs.writeFileSync(filePath, Buffer.from(fileRes.data))
+      repaired++
+      onProgress?.(`[Launcher] 修復 (${repaired}/${targets.length}): ${relativePath}`)
+    } catch (err) {
+      return {
+        success: false,
+        error: `ファイル修復に失敗しました: ${relativePath} - ${(err as Error).message}`
+      }
+    }
+  }
+
+  return { success: true }
 }
 
 // ── Maven ライブラリパス変換 ─────────────────────────────────────────────────
@@ -1308,17 +1439,40 @@ ipcMain.handle('launch-minecraft', async (event, options: LaunchOptions) => {
       event.sender.send('launch-log', '[Launcher] オフライン認証です。online-modeサーバーには接続できません。')
     }
 
-    // ファイル検証（未更新のModPackは起動できないように）
+    // ファイル整合性チェック（改ざん・不正ファイル検知→自動修復）
     if (options.modpackId) {
-      event.sender.send('launch-log', `[Launcher] ファイルを検証中...`)
-      const verification = await verifyModpackFiles(options.gameDir, options.modpackId)
+      event.sender.send('launch-log', `[Launcher] ファイル整合性をサーバーで確認中...`)
+      const verification = await verifyModpackFiles(
+        options.gameDir,
+        options.modpackId,
+        (msg) => event.sender.send('launch-log', msg)
+      )
       if (!verification.valid) {
-        if (verification.missingFiles.includes('manifest')) {
+        if (verification.invalidFiles.includes('manifest')) {
           return { success: false, error: '配布対象ファイルが設定されていません。開発者メニューでファイルを選択・保存してください。' }
         }
-        return { success: false, error: `ModPackが更新されていません。先に「更新」ボタンを押してください。（不足: ${verification.missingFiles.length}ファイル）` }
+        // 改ざんまたは不足ファイルを自動修復してから起動
+        event.sender.send('launch-log', `[Launcher] ⚠️ ${verification.invalidFiles.length}件のファイルに問題を検知しました。サーバーから正しいファイルを取得して修復します...`)
+        const repair = await repairModpackFiles(
+          options.gameDir,
+          options.modpackId,
+          verification.manifest,
+          verification.invalidFiles,
+          (msg) => event.sender.send('launch-log', msg)
+        )
+        if (!repair.success) {
+          return { success: false, error: repair.error || 'ファイルの修復に失敗しました。ランチャーを再起動してください。' }
+        }
+        event.sender.send('launch-log', `[Launcher] ✅ ${verification.invalidFiles.length}件のファイルを修復しました。起動を続行します。`)
+        const userFileRelPaths = verification.manifest.filter((f) => f.userFile).map((f) => f.path)
+        unprotectUserFiles(options.gameDir, userFileRelPaths)
+        applyPathRules(options.gameDir, verification.pathRules)
+      } else {
+        const userFileRelPaths = verification.manifest.filter((f) => f.userFile).map((f) => f.path)
+        unprotectUserFiles(options.gameDir, userFileRelPaths)
+        applyPathRules(options.gameDir, verification.pathRules)
+        event.sender.send('launch-log', `[Launcher] ファイル整合性確認完了`)
       }
-      event.sender.send('launch-log', `[Launcher] ファイル検証完了`)
     }
 
     const authorization = mcAuth.isOffline
@@ -2501,8 +2655,8 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
   unprotectInstanceFiles(modpackDir)
   try {
     const res = await axios.get(modpackFilesUrl(id), { timeout: 30000 })
-    const files: ManifestFileEntry[] = res.data
-    if (!Array.isArray(files) || files.length === 0) {
+    const { files, pathRules: manifestPathRules } = parseManifest(res.data)
+    if (files.length === 0) {
       return { success: false, error: '配布対象ファイルがありません。開発者メニューのファイル管理で配布対象を選択して保存してください。' }
     }
 
@@ -2549,6 +2703,11 @@ ipcMain.handle('update-modpack-by-id', async (event, id: string, modpackDir: str
     const userdataDir = path.join(path.dirname(path.dirname(modpackDir)), 'userdata', path.basename(modpackDir))
     ensureUserFolders(modpackDir, userdataDir)
     hideInstanceFiles(modpackDir)
+    // userFile=trueのファイルは隠し・読み取り専用を解除
+    const userFileRelPaths = files.filter((f) => f.userFile).map((f) => f.path)
+    unprotectUserFiles(modpackDir, userFileRelPaths)
+    // 自動生成ファイルルールを適用
+    applyPathRules(modpackDir, manifestPathRules)
     return { success: true }
   } catch (err: unknown) {
     const status = (err as { response?: { status?: number } }).response?.status
@@ -2761,15 +2920,26 @@ ipcMain.handle('dev-get-modpack-download-targets', async (_e, modpackId: string)
   try {
     const res = await axios.get(`${MODPACK_SERVER_URL}/admin/modpacks`, { headers: devHeaders(), timeout: 10000 })
     const modpack = (res.data as Array<{ id: string; downloadTargets?: string[] }>).find((m) => m.id === modpackId)
-    return { success: true, data: Array.isArray(modpack?.downloadTargets) ? modpack?.downloadTargets : [] }
+    const targets = Array.isArray(modpack?.downloadTargets) ? modpack.downloadTargets : []
+    // マニフェストからuserFile・pathRules情報を取得
+    let userFilePaths: string[] = []
+    let pathRules: PathRule[] = []
+    try {
+      const manifestRes = await axios.get(modpackFilesUrl(modpackId), { timeout: 10000 })
+      const parsed = parseManifest(manifestRes.data)
+      userFilePaths = parsed.files.filter((f) => f.userFile).map((f) => f.path)
+      pathRules = parsed.pathRules
+    } catch { /* マニフェスト未設定でも続行 */ }
+    return { success: true, data: targets, userFilePaths, pathRules }
   } catch (err: unknown) {
     return { success: false, error: (err as Error).message }
   }
 })
 
-ipcMain.handle('dev-save-modpack-download-targets', async (_e, modpackId: string, paths: string[]) => {
+ipcMain.handle('dev-save-modpack-download-targets', async (_e, modpackId: string, paths: string[], userFilePaths: string[], pathRules: PathRule[]) => {
   try {
     const cleaned = Array.from(new Set((paths || []).map(normalizePath).filter(Boolean)))
+    const userFileSet = new Set((userFilePaths || []).map(normalizePath))
 
     const fileRes = await axios.get(`${MODPACK_SERVER_URL}/admin/modpacks/${modpackId}/files`, {
       headers: devHeaders(),
@@ -2782,11 +2952,18 @@ ipcMain.handle('dev-save-modpack-download-targets', async (_e, modpackId: string
 
     const infoRes = await axios.get(modpackInfoUrl(modpackId), { timeout: 10000 })
     const version = (infoRes.data?.version as string) || '1.0.0'
-    const manifest = selected.map((p) => ({ path: p, url: modpackFileDownloadUrl(modpackId, p), hash: '' }))
+    const manifest = selected.map((p) => ({
+      path: p,
+      url: modpackFileDownloadUrl(modpackId, p),
+      hash: '',
+      ...(userFileSet.has(normalizePath(p)) ? { skipIntegrity: true, userFile: true } : {})
+    }))
 
+    const cleanedPathRules = (pathRules || []).filter((r) => r.pattern && r.mode)
     await axios.put(`${MODPACK_SERVER_URL}/admin/modpacks/${modpackId}/manifest`, {
       version,
-      files: manifest
+      files: manifest,
+      pathRules: cleanedPathRules
     }, {
       headers: { ...devHeaders(), 'Content-Type': 'application/json' },
       timeout: 15000

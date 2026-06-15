@@ -76,8 +76,8 @@ const api = {
     ipcRenderer.invoke('dev-delete-file', modpackId, serverPath),
   devGetModpackDownloadTargets: (modpackId: string) =>
     ipcRenderer.invoke('dev-get-modpack-download-targets', modpackId),
-  devSaveModpackDownloadTargets: (modpackId: string, paths: string[]) =>
-    ipcRenderer.invoke('dev-save-modpack-download-targets', modpackId, paths),
+  devSaveModpackDownloadTargets: (modpackId: string, paths: string[], userFilePaths: string[], pathRules: { pattern: string; mode: 'user' | 'protected' }[]) =>
+    ipcRenderer.invoke('dev-save-modpack-download-targets', modpackId, paths, userFilePaths, pathRules),
   devGetNews: () => ipcRenderer.invoke('dev-get-news'),
   devUpdateNews: (news: unknown) => ipcRenderer.invoke('dev-update-news', news),
 

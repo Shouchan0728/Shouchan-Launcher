@@ -222,8 +222,8 @@ declare global {
       devUploadFile: (modpackId: string, localPath: string, serverPath: string) => Promise<{ success: boolean; error?: string }>
       devUploadDirectory: (modpackId: string, localDir: string, serverBasePath: string) => Promise<{ success: boolean; count?: number; error?: string }>
       devDeleteFile: (modpackId: string, serverPath: string) => Promise<{ success: boolean; error?: string }>
-      devGetModpackDownloadTargets: (modpackId: string) => Promise<{ success: boolean; data?: string[]; error?: string }>
-      devSaveModpackDownloadTargets: (modpackId: string, paths: string[]) => Promise<{ success: boolean; count?: number; error?: string }>
+      devGetModpackDownloadTargets: (modpackId: string) => Promise<{ success: boolean; data?: string[]; userFilePaths?: string[]; pathRules?: { pattern: string; mode: 'user' | 'protected' }[]; error?: string }>
+      devSaveModpackDownloadTargets: (modpackId: string, paths: string[], userFilePaths: string[], pathRules: { pattern: string; mode: 'user' | 'protected' }[]) => Promise<{ success: boolean; count?: number; error?: string }>
 
       clearCache: (type: 'versions' | 'libraries' | 'all') => Promise<{ success: boolean; cleared?: string[]; error?: string }>
 

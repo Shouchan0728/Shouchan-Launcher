@@ -3,9 +3,33 @@ import {
   Upload, Trash2, RefreshCw, Plus, Save, Package,
   AlertCircle, CheckCircle, FileText, FolderOpen, Folder, Zap,
   Loader2, Gamepad2, User, LogIn, ChevronRight, File, ArrowUp, X,
-  Edit2, ImageIcon, Search, Monitor
+  Edit2, ImageIcon, Search, Monitor, Lock, LockOpen
 } from 'lucide-react'
 import { ServerModpack, ModLoader, CrashReport } from '../types'
+
+type DistState = 'none' | 'protected' | 'user'
+
+const DistBadge = ({ state, count, total, onClick }: { state: DistState; count?: number; total?: number; onClick: () => void }) => {
+  const countLabel = count !== undefined && total !== undefined ? ` (${count}/${total})` : ''
+  if (state === 'none') return (
+    <button onClick={onClick} title={`クリックで保護モードとして配布対象に追加${countLabel}`}
+      className="text-gray-600 hover:text-gray-400 text-xs w-full text-center py-0.5 rounded hover:bg-white/5 transition-colors">
+      —
+    </button>
+  )
+  if (state === 'protected') return (
+    <button onClick={onClick} title={`保護モード：隠し属性+読取専用+整合性チェックあり${countLabel}\nクリックでユーザーモードへ`}
+      className="flex items-center justify-center gap-0.5 bg-amber-600/15 text-amber-400 hover:bg-amber-600/30 px-1.5 py-0.5 rounded text-[10px] font-medium w-full transition-colors">
+      <Lock size={9} />保護
+    </button>
+  )
+  return (
+    <button onClick={onClick} title={`ユーザーモード：表示+編集可+整合性チェックなし${countLabel}\nクリックで配布除外へ`}
+      className="flex items-center justify-center gap-0.5 bg-blue-600/15 text-blue-300 hover:bg-blue-600/30 px-1.5 py-0.5 rounded text-[10px] font-medium w-full transition-colors">
+      <LockOpen size={9} />編集可
+    </button>
+  )
+}
 
 type DevTab = 'modpacks' | 'files' | 'mc-auth' | 'launcher' | 'crashes'
 
@@ -54,7 +78,12 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
   const [confirmDeletePath, setConfirmDeletePath] = useState<string | null>(null)
   const [confirmDeleteFolder, setConfirmDeleteFolder] = useState<string | null>(null)
   const [downloadTargets, setDownloadTargets] = useState<string[]>([])
+  const [userFilePaths, setUserFilePaths] = useState<string[]>([])
+  const [pathRules, setPathRules] = useState<{ pattern: string; mode: 'user' | 'protected' }[]>([])
   const [savingDownloadTargets, setSavingDownloadTargets] = useState(false)
+  const [fileTab, setFileTab] = useState<'browser' | 'rules'>('browser')
+  const [newRulePattern, setNewRulePattern] = useState('')
+  const [newRuleMode, setNewRuleMode] = useState<'user' | 'protected'>('user')
 
   // ── MCアカウント ──────────────────────────────────────────────────────────────
   const [msAuthLoading, setMsAuthLoading] = useState(false)
@@ -120,6 +149,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
 
     setConfirmDeleteFolder(null)
     setDownloadTargets((prev) => prev.filter((p) => !p.startsWith(prefix) && p !== folderPath))
+    setUserFilePaths((prev) => prev.filter((p) => !p.startsWith(prefix) && p !== folderPath))
     ok(`${folderPath} を削除しました`)
     loadFiles()
   }
@@ -138,8 +168,11 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     const mpId = id ?? filesMpId
     if (!mpId) return
     const res = await window.api.devGetModpackDownloadTargets(mpId)
-    if (res.success) setDownloadTargets(res.data || [])
-    else err(res.error || '配布対象の読み込みに失敗')
+    if (res.success) {
+      setDownloadTargets(res.data || [])
+      setUserFilePaths((res as { userFilePaths?: string[] }).userFilePaths || [])
+      setPathRules((res as { pathRules?: { pattern: string; mode: 'user' | 'protected' }[] }).pathRules || [])
+    } else err(res.error || '配布対象の読み込みに失敗')
   }
 
   const loadCrashReports = async () => {
@@ -253,27 +286,49 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
     setConfirmDeletePath(null)
     if (res.success) {
       setDownloadTargets((prev) => prev.filter((p) => p !== filePath))
+      setUserFilePaths((prev) => prev.filter((p) => p !== filePath))
       ok(`${filePath} を削除しました`)
       loadFiles()
     }
     else err(res.error || '削除失敗')
   }
 
-  const toggleDownloadTarget = (filePath: string) => {
-    setDownloadTargets((prev) =>
-      prev.includes(filePath)
-        ? prev.filter((p) => p !== filePath)
-        : [...prev, filePath]
-    )
+  const cycleFileDistribution = (filePath: string) => {
+    const distributed = downloadTargets.includes(filePath)
+    const isUser = userFilePaths.includes(filePath)
+    if (!distributed) {
+      setDownloadTargets(prev => [...prev, filePath])
+    } else if (!isUser) {
+      setUserFilePaths(prev => [...prev, filePath])
+    } else {
+      setDownloadTargets(prev => prev.filter(p => p !== filePath))
+      setUserFilePaths(prev => prev.filter(p => p !== filePath))
+    }
+  }
+
+  const cycleFolderDistribution = (folderFilePaths: string[]) => {
+    const distPaths = folderFilePaths.filter(p => downloadTargets.includes(p))
+    const userPaths = distPaths.filter(p => userFilePaths.includes(p))
+    const state: DistState = distPaths.length === 0 ? 'none'
+      : userPaths.length === distPaths.length ? 'user' : 'protected'
+    if (state === 'none') {
+      setDownloadTargets(prev => Array.from(new Set([...prev, ...folderFilePaths])))
+    } else if (state === 'protected') {
+      setDownloadTargets(prev => Array.from(new Set([...prev, ...folderFilePaths])))
+      setUserFilePaths(prev => Array.from(new Set([...prev, ...folderFilePaths])))
+    } else {
+      setDownloadTargets(prev => prev.filter(p => !folderFilePaths.includes(p)))
+      setUserFilePaths(prev => prev.filter(p => !folderFilePaths.includes(p)))
+    }
   }
 
   const handleSaveDownloadTargets = async () => {
     if (!filesMpId) return
     setSavingDownloadTargets(true)
-    const res = await window.api.devSaveModpackDownloadTargets(filesMpId, downloadTargets)
+    const res = await window.api.devSaveModpackDownloadTargets(filesMpId, downloadTargets, userFilePaths, pathRules)
     setSavingDownloadTargets(false)
-    if (res.success) ok(`配布対象を保存しました（${res.count ?? 0} 件）`)
-    else err(res.error || '配布対象の保存に失敗')
+    if (res.success) ok(`配布対象・パスルールを保存しました（${res.count ?? 0} 件）`)
+    else err(res.error || '保存に失敗')
   }
 
   const navigateUp = () => setCurrentPath(currentPath.includes('/') ? currentPath.split('/').slice(0, -1).join('/') : '')
@@ -734,6 +789,7 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                     setCurrentPath('')
                     setFiles([])
                     setDownloadTargets([])
+                    setUserFilePaths([])
                     if (e.target.value) {
                       loadFiles(e.target.value)
                       loadDownloadTargets(e.target.value)
@@ -748,6 +804,20 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
 
             {filesMpId && (
               <>
+                {/* Sub-tabs */}
+                <div className="flex bg-[#1a1a2e] rounded-lg border border-white/5 p-0.5 gap-0.5">
+                  <button onClick={() => setFileTab('browser')}
+                    className={`flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors ${fileTab === 'browser' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white'}`}>
+                    ファイルブラウザ
+                  </button>
+                  <button onClick={() => setFileTab('rules')}
+                    className={`flex-1 text-xs py-1.5 px-3 rounded-md font-medium transition-colors flex items-center justify-center gap-1.5 ${fileTab === 'rules' ? 'bg-white/10 text-white' : 'text-gray-500 hover:text-white'}`}>
+                    自動パスルール
+                    {pathRules.length > 0 && <span className="bg-blue-600/70 text-[9px] px-1.5 py-0.5 rounded-full">{pathRules.length}</span>}
+                  </button>
+                </div>
+
+                {fileTab === 'browser' && (<>
                 {/* Address bar */}
                 <div className="flex items-center gap-1.5 bg-[#0d0d14] rounded-lg border border-white/8 px-2 py-1.5">
                   <button onClick={navigateUp} disabled={!currentPath}
@@ -820,14 +890,6 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                   >
                     配布対象をクリア
                   </button>
-                  <button
-                    onClick={handleSaveDownloadTargets}
-                    disabled={savingDownloadTargets}
-                    className="ml-auto flex items-center gap-1.5 text-xs px-3 py-1 rounded-lg bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 font-semibold transition-colors"
-                  >
-                    {savingDownloadTargets ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
-                    配布対象を保存
-                  </button>
                 </div>
 
                 {/* Folder upload progress */}
@@ -846,11 +908,15 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
 
                 {/* File explorer */}
                 <div className="flex flex-col rounded-xl border border-white/5 overflow-hidden" style={{ minHeight: 240 }}>
-                  <div className="grid grid-cols-[1fr_100px_76px_70px] bg-[#1a1a2e] border-b border-white/8">
+                  <div className="grid grid-cols-[1fr_80px_56px_80px_36px] bg-[#1a1a2e] border-b border-white/8">
                     <div className="px-4 py-2 text-xs text-gray-500 font-medium">名前</div>
                     <div className="px-3 py-2 text-xs text-gray-500 font-medium">種類</div>
                     <div className="px-3 py-2 text-xs text-gray-500 font-medium text-right">サイズ</div>
-                    <div className="px-2 py-2 text-xs text-gray-500 font-medium text-center">配布</div>
+                    <div className="px-1 py-2 text-xs text-gray-500 font-medium text-center"
+                      title="─ クリックで保護モード追加&#10;🔒 保護：隠し+読取専用+整合性チェック&#10;🔓 編集可：表示+書き込み可+整合性チェックなし">
+                      配布設定
+                    </div>
+                    <div />
                   </div>
                   <div className="flex-1 overflow-y-auto bg-[#111117]">
                     {filesLoading ? (
@@ -868,16 +934,19 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                           files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).map((f) => {
                             const name = f.path.split('/').pop() || f.path
                             const ext = getExt(name)
+                            const distState: DistState = !downloadTargets.includes(f.path) ? 'none'
+                              : userFilePaths.includes(f.path) ? 'user' : 'protected'
                             return (
-                              <div key={f.path} className="grid grid-cols-[1fr_100px_76px_70px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
+                              <div key={f.path} className="grid grid-cols-[1fr_80px_56px_80px_36px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
                                 <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-300 min-w-0" title={f.path}>
                                   <FileIcon ext={ext} /><span className="truncate text-xs text-gray-400">{f.path}</span>
                                 </div>
                                 <div className="px-3 py-2 text-xs text-gray-600 truncate">{KIND[ext] ?? (ext ? ext.toUpperCase() : 'ファイル')}</div>
                                 <div className="px-3 py-2 text-xs text-gray-500 text-right">{f.size ? fmtSize(f.size) : '—'}</div>
-                                <div className="flex items-center justify-center gap-1">
-                                  <input type="checkbox" checked={downloadTargets.includes(f.path)}
-                                    onChange={() => toggleDownloadTarget(f.path)} className="accent-yellow-500" />
+                                <div className="px-1 flex items-center">
+                                  <DistBadge state={distState} onClick={() => cycleFileDistribution(f.path)} />
+                                </div>
+                                <div className="flex items-center justify-center">
                                   {confirmDeletePath === f.path ? (
                                     <div className="flex items-center gap-0.5">
                                       <button onClick={() => handleDeleteFile(f.path)} className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white">✓</button>
@@ -891,76 +960,76 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                                 </div>
                               </div>
                             )
-                          })
-                        )}
+                          }))
+                        }
                       </>
                     ) : (
                       <>
                         {currentPath && (
                           <button onClick={navigateUp}
-                            className="grid grid-cols-[1fr_100px_76px_70px] w-full border-b border-white/4 hover:bg-white/4 transition-colors text-left">
+                            className="grid grid-cols-[1fr_80px_56px_80px_36px] w-full border-b border-white/4 hover:bg-white/4 transition-colors text-left">
                             <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-400">
                               <Folder size={14} className="text-yellow-500/60 flex-shrink-0" />..
                             </div>
                             <div className="px-3 py-2 text-xs text-gray-600">フォルダー</div>
-                            <div /><div />
+                            <div /><div /><div />
                           </button>
                         )}
-                        {visibleFolders.map((folder) => (
+                        {visibleFolders.map((folder) => {
+                          const folderPath = currentPath ? `${currentPath}/${folder}` : folder
+                          const folderFilePaths = files.filter(f => f.path.startsWith(folderPath + '/')).map(f => f.path)
+                          const distCount = folderFilePaths.filter(p => downloadTargets.includes(p)).length
+                          const userCount = folderFilePaths.filter(p => downloadTargets.includes(p) && userFilePaths.includes(p)).length
+                          const folderState: DistState = distCount === 0 ? 'none'
+                            : userCount === distCount ? 'user' : 'protected'
+                          return (
                           <div key={folder}
-                            className="grid grid-cols-[1fr_100px_76px_70px] w-full border-b border-white/4 hover:bg-white/4 transition-colors text-left">
+                            className="grid grid-cols-[1fr_80px_56px_80px_36px] w-full border-b border-white/4 hover:bg-white/4 transition-colors text-left">
                             <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-200">
-                              <button onClick={() => setCurrentPath(currentPath ? `${currentPath}/${folder}` : folder)} className="flex items-center gap-2">
+                              <button onClick={() => setCurrentPath(folderPath)} className="flex items-center gap-2">
                                 <Folder size={14} className="text-yellow-500/70 flex-shrink-0" />{folder}
                               </button>
                             </div>
                             <div className="px-3 py-2 text-xs text-gray-600">フォルダー</div>
-                            <div />
+                            <div className="px-3 py-2 text-xs text-gray-600 text-right">{folderFilePaths.length}件</div>
+                            <div className="px-1 flex items-center">
+                              <DistBadge state={folderState} count={distCount} total={folderFilePaths.length}
+                                onClick={() => cycleFolderDistribution(folderFilePaths)} />
+                            </div>
                             <div className="flex items-center justify-center">
-                              {confirmDeleteFolder === (currentPath ? `${currentPath}/${folder}` : folder) ? (
+                              {confirmDeleteFolder === folderPath ? (
                                 <div className="flex items-center gap-0.5">
-                                  <button
-                                    onClick={() => handleDeleteFolder(currentPath ? `${currentPath}/${folder}` : folder)}
-                                    className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white"
-                                  >
-                                    ✓
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDeleteFolder(null)}
-                                    className="text-[10px] px-1.5 py-0.5 bg-[#252535] rounded text-gray-400"
-                                  >
-                                    ✗
-                                  </button>
+                                  <button onClick={() => handleDeleteFolder(folderPath)}
+                                    className="text-[10px] px-1.5 py-0.5 bg-red-600 hover:bg-red-500 rounded text-white">✓</button>
+                                  <button onClick={() => setConfirmDeleteFolder(null)}
+                                    className="text-[10px] px-1.5 py-0.5 bg-[#252535] rounded text-gray-400">✗</button>
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => setConfirmDeleteFolder(currentPath ? `${currentPath}/${folder}` : folder)}
-                                  className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors"
-                                >
+                                <button onClick={() => setConfirmDeleteFolder(folderPath)}
+                                  className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors">
                                   <Trash2 size={12} />
                                 </button>
                               )}
                             </div>
                           </div>
-                        ))}
+                          )
+                        })}
                         {filesHere.map((f) => {
                           const name = f.path.split('/').pop() || f.path
                           const ext = getExt(name)
+                          const distState: DistState = !downloadTargets.includes(f.path) ? 'none'
+                            : userFilePaths.includes(f.path) ? 'user' : 'protected'
                           return (
-                            <div key={f.path} className="grid grid-cols-[1fr_100px_76px_70px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
+                            <div key={f.path} className="grid grid-cols-[1fr_80px_56px_80px_36px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
                               <div className="px-4 py-2 flex items-center gap-2 text-sm text-gray-300 min-w-0">
                                 <FileIcon ext={ext} /><span className="truncate">{name}</span>
                               </div>
                               <div className="px-3 py-2 text-xs text-gray-600 truncate">{KIND[ext] ?? (ext ? ext.toUpperCase() : 'ファイル')}</div>
                               <div className="px-3 py-2 text-xs text-gray-500 text-right">{f.size ? fmtSize(f.size) : '—'}</div>
-                              <div className="flex items-center justify-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={downloadTargets.includes(f.path)}
-                                  onChange={() => toggleDownloadTarget(f.path)}
-                                  className="accent-yellow-500"
-                                  title="配布対象に含める"
-                                />
+                              <div className="px-1 flex items-center">
+                                <DistBadge state={distState} onClick={() => cycleFileDistribution(f.path)} />
+                              </div>
+                              <div className="flex items-center justify-center">
                                 {confirmDeletePath === f.path ? (
                                   <div className="flex items-center gap-0.5">
                                     <button onClick={() => handleDeleteFile(f.path)}
@@ -988,11 +1057,122 @@ export default function DeveloperMenu({ mcUsername, onMcUsernameChange, onLaunch
                     )}
                   </div>
                   <div className="bg-[#1a1a2e] border-t border-white/5 px-4 py-1 flex items-center gap-4">
-                    <span className="text-[11px] text-gray-600">{files.length} 件のファイル</span>
-                    <span className="text-[11px] text-yellow-500/80">配布対象: {downloadTargets.length} 件</span>
-                    {fileSearch.trim() && <span className="text-[11px] text-blue-400/80">検索: {files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).length} 件表示</span>}
+                    <span className="text-[11px] text-gray-600">{files.length} 件</span>
+                    <span className="text-[11px] text-amber-500/80">保護: {downloadTargets.filter(p => !userFilePaths.includes(p)).length}件</span>
+                    <span className="text-[11px] text-blue-400/80">編集可: {userFilePaths.filter(p => downloadTargets.includes(p)).length}件</span>
+                    {fileSearch.trim() && <span className="text-[11px] text-gray-500">検索: {files.filter(f => f.path.toLowerCase().includes(fileSearch.trim().toLowerCase())).length}件表示</span>}
                     {!fileSearch && currentPath && <span className="text-[11px] text-gray-600">場所: {currentPath}/</span>}
                   </div>
+                </div>
+                </>)}
+
+                {fileTab === 'rules' && (
+                  <div className="flex flex-col gap-3">
+                    <div className="rounded-xl bg-[#1a1a2e] border border-white/5 p-4">
+                      <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                        <Lock size={10} />自動パスルール
+                      </p>
+                      <p className="text-[11px] text-gray-600 leading-relaxed">
+                        Minecraft起動時に自動生成されるファイル・フォルダーに対して、
+                        起動毎に保護設定を自動適用します。<br/>
+                        パターンはインスタンスディレクトリからの相対パスです。
+                        （例: <code className="text-gray-400 bg-white/5 px-1 rounded">options.txt</code>、
+                        <code className="text-gray-400 bg-white/5 px-1 rounded">logs</code>）
+                      </p>
+                    </div>
+
+                    {/* 新規ルール入力 */}
+                    <div className="flex gap-2 items-center">
+                      <input
+                        value={newRulePattern}
+                        onChange={(e) => setNewRulePattern(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newRulePattern.trim()) {
+                            setPathRules(prev => [...prev.filter(r => r.pattern !== newRulePattern.trim()), { pattern: newRulePattern.trim(), mode: newRuleMode }])
+                            setNewRulePattern('')
+                          }
+                        }}
+                        placeholder="パターン（例: options.txt、logs）..."
+                        className="flex-1 bg-[#1a1a2e] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 outline-none focus:border-yellow-500/50 transition-colors"
+                      />
+                      <div className="flex bg-[#1a1a2e] border border-white/10 rounded-lg p-0.5 gap-0.5">
+                        <button onClick={() => setNewRuleMode('user')}
+                          className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-colors ${newRuleMode === 'user' ? 'bg-blue-600/30 text-blue-300' : 'text-gray-500 hover:text-white'}`}>
+                          <LockOpen size={10} />編集可
+                        </button>
+                        <button onClick={() => setNewRuleMode('protected')}
+                          className={`flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-md font-medium transition-colors ${newRuleMode === 'protected' ? 'bg-amber-600/30 text-amber-300' : 'text-gray-500 hover:text-white'}`}>
+                          <Lock size={10} />保護
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          if (!newRulePattern.trim()) return
+                          setPathRules(prev => [...prev.filter(r => r.pattern !== newRulePattern.trim()), { pattern: newRulePattern.trim(), mode: newRuleMode }])
+                          setNewRulePattern('')
+                        }}
+                        disabled={!newRulePattern.trim()}
+                        className="flex items-center gap-1 text-xs px-3 py-2 rounded-lg bg-[#252535] hover:bg-[#303045] disabled:opacity-30 text-gray-300 transition-colors"
+                      >
+                        <Plus size={11} />追加
+                      </button>
+                    </div>
+
+                    {/* ルール一覧 */}
+                    <div className="flex flex-col rounded-xl border border-white/5 overflow-hidden">
+                      <div className="grid grid-cols-[1fr_96px_36px] bg-[#1a1a2e] border-b border-white/8">
+                        <div className="px-4 py-2 text-xs text-gray-500 font-medium">パターン</div>
+                        <div className="px-3 py-2 text-xs text-gray-500 font-medium text-center">モード</div>
+                        <div />
+                      </div>
+                      <div className="bg-[#111117]">
+                        {pathRules.length === 0 ? (
+                          <div className="flex flex-col items-center justify-center py-10 text-gray-700">
+                            <Lock size={24} className="mb-2 opacity-30" />
+                            <p className="text-sm">ルールがありません</p>
+                            <p className="text-xs mt-1">上のフォームからルールを追加してください</p>
+                          </div>
+                        ) : (
+                          pathRules.map((rule, i) => (
+                            <div key={i} className="grid grid-cols-[1fr_96px_36px] items-center border-b border-white/4 hover:bg-white/4 transition-colors">
+                              <div className="px-4 py-2.5 font-mono text-sm text-gray-300">{rule.pattern}</div>
+                              <div className="px-2 py-2.5 flex items-center justify-center">
+                                <button onClick={() => setPathRules(prev => prev.map((r, j) => j === i ? { ...r, mode: r.mode === 'user' ? 'protected' : 'user' } : r))}
+                                  className={`flex items-center gap-1 text-[10px] px-2 py-0.5 rounded font-medium transition-colors ${
+                                    rule.mode === 'user'
+                                      ? 'bg-blue-600/15 text-blue-300 hover:bg-blue-600/30'
+                                      : 'bg-amber-600/15 text-amber-400 hover:bg-amber-600/30'
+                                  }`}>
+                                  {rule.mode === 'user' ? <><LockOpen size={9} />編集可</> : <><Lock size={9} />保護</>}
+                                </button>
+                              </div>
+                              <div className="flex items-center justify-center">
+                                <button onClick={() => setPathRules(prev => prev.filter((_, j) => j !== i))}
+                                  className="p-1.5 text-red-500/40 hover:text-red-400 transition-colors">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 保存フッター */}
+                <div className="flex items-center justify-between bg-[#1a1a2e] rounded-lg border border-white/5 px-3 py-2">
+                  <div className="text-[11px] text-gray-600">
+                    配布: {downloadTargets.length}件 ・ パスルール: {pathRules.length}件
+                  </div>
+                  <button
+                    onClick={handleSaveDownloadTargets}
+                    disabled={savingDownloadTargets}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 font-semibold transition-colors"
+                  >
+                    {savingDownloadTargets ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                    設定を保存
+                  </button>
                 </div>
               </>
             )}
