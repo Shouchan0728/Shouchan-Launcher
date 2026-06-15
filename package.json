@@ -1,6 +1,6 @@
 {
   "name": "shouchan-launcher",
-  "version": "2.1.1",
+  "version": "2.2.0",
   "description": "しょうちゃんが作ったしょうちゃんのためのランチャー",
   "main": "out/main/index.js",
   "author": "Shouchan",
